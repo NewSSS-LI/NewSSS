@@ -1,0 +1,60 @@
+lines 2048, span 3712, groups 2034, model on, CMT 8192, gc threshold 5, seed 1, meta 2152 KB (model 1779 KB)
+
+[A] the FIO pattern used so far: 128KB I/O over a small range
+read of unwritten range        | R    131072 cmt   0.0% model   0.0% dbl-read   0.0%
+seq write                      | W    131072 WA  1.00 tpW/W 0.000 gc     0 emptyLines     0
+seq read                       | R    131072 cmt   6.3% model  93.8% dbl-read   0.0%
+rand read                      | R    131072 cmt   6.4% model  93.6% dbl-read   0.0%
+rand write x1                  | W    131072 WA  1.01 tpW/W 0.007 gc     0 emptyLines     0
+rand read                      | R    131072 cmt  55.5% model  37.4% dbl-read   7.0%
+rand write x6 (GC warm-up)     | W    786432 WA  1.17 tpW/W 0.006 gc    35 emptyLines     0
+rand read                      | R    131072 cmt  75.1% model  15.0% dbl-read   9.8%
+verify all                     | R   7550208 cmt   1.7% model   0.0% dbl-read   0.1%
+
+[B] paper-like: warm the whole SSD, then read
+seq fill                       | W   7550208 WA  1.00 tpW/W 0.000 gc     0 emptyLines     0
+rand read 16KB                 | R   7550208 cmt   0.1% model  99.9% dbl-read   0.0%
+rand write 16KB x1             | W   7550208 WA 10.19 tpW/W 0.205 gc 18275 emptyLines     0
+rand read 16KB                 | R   7550208 cmt   0.1% model  93.6% dbl-read   6.3%
+rand write 16KB x5             | W  37751040 WA 10.84 tpW/W 0.205 gc 98009 emptyLines     0
+rand read 16KB                 | R   7550208 cmt   0.1% model  94.8% dbl-read   5.0%
+seq read 16KB                  | R   7550208 cmt   0.2% model  94.6% dbl-read   5.1%
+seq rewrite                    | W   7550208 WA  4.53 tpW/W 0.001 gc  7187 emptyLines     9
+rand read 16KB                 | R   7550208 cmt   0.1% model  99.7% dbl-read   0.1%
+verify all                     | R   7550208 cmt   0.0% model  99.8% dbl-read   0.1%
+
+[C] partially valid groups: every LPN has holes
+write random 60% of LPNs       | W   4528564 WA  1.00 tpW/W 0.000 gc     0 emptyLines     0
+overwrite same range x4        | W  30200832 WA  6.55 tpW/W 0.204 gc 45936 emptyLines     0
+rand read 16KB                 | R   7550208 cmt   0.1% model  87.5% dbl-read  12.4%
+verify all                     | R   7550208 cmt   6.0% model  84.1% dbl-read   9.9%
+
+[D] skewed writes, free lines run out, watermark GC
+seq fill                       | W   7550208 WA  1.00 tpW/W 0.000 gc     0 emptyLines     0
+80/20 mixed x6                 | R   5662656 cmt   0.1% model  94.9% dbl-read   4.9% | W  45301248 WA 10.67 tpW/W 0.193 gc 115666 emptyLines     0
+verify all                     | R   7550208 cmt   0.3% model  94.3% dbl-read   5.4%
+
+[E] stats report path
+    [LFTL] --- since last report --- freeLines 4
+    hostReads 13212864
+    hostWrites 52851456
+    readCmtHits 25254
+    readModelHits 12496758
+    readTpMisses 690852
+    readUnmapped 0
+    writeModelHits 42990575
+    tpReads 11532472
+    tpWrites 8732982
+    gcGroups 115666
+    gcCopiedPages 429324968
+    gcTrainedLpns 429085809
+    tpGcCount 2131
+    tpGcCopiedPages 438199
+    linesAllocated 206148
+    linesFreedEmpty 0
+    modelRejected 0
+    gcMs 13737
+    trainUs 3098000
+    (report printed above when counters moved)
+
+PASS: no integrity, ordering, erase-count or shadow failure; modelRejected = 0
