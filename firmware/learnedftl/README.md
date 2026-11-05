@@ -33,8 +33,9 @@ LearnedFTL(Wang et al., HPCA'24)을 Cosmos+ OpenSSD Micron 8C2W 보드용으로 
 lspci | grep -i non-volatile     # Xilinx Device 7028 확인
 sudo nvme list                   # 용량 약 118GB의 장치가 어느 이름인지 확인
 
-# 데이터 무결성 확인 (GC가 돌도록 작은 범위를 반복해서 덮어씀)
-sudo fio --name=verify --filename=/dev/nvme0n1 --rw=randwrite --bs=16k --size=2G --loops=8 \
+# 데이터 무결성 확인. --norandommap이 없으면 FIO가 루프마다 모든 블록을 정확히 한 번씩
+# 쓰므로 옛 라인이 통째로 무효가 되어 GC가 돌지 않음 (실측: 8루프에 gcGroups 0)
+sudo fio --name=verify --filename=/dev/nvme0n1 --rw=randwrite --norandommap --randrepeat=0 --bs=16k --size=2G --loops=8 \
     --ioengine=libaio --direct=1 --iodepth=4 --verify=crc32c --do_verify=1
 ```
 
