@@ -422,7 +422,7 @@ static void GcGroup(unsigned int g)
 	// Steps 3 and 4: train and evaluate.
 	trainTick = LftlPortTicks();
 #if LFTL_ENABLE_MODEL
-	m->stats.gcTrainedLpns += LftlModelTrain(&m->model[g], map);
+	m->stats.gcTrainedLpns += LftlModelTrain(&m->model[g], map, (newLine != LFTL_LINE_NONE) ? VsaOf(newLine, 0) : VSA_NONE);
 #endif
 	m->trainTickSum += LftlPortTicks() - trainTick;
 

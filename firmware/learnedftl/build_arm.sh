@@ -12,7 +12,7 @@ shift 2
 GNU=/c/Xilinx/SDK/2019.1/gnu/aarch32/nt/gcc-arm-none-eabi/bin
 BSP="$SDK_WS/run-gftl3_bsp/ps7_cortexa9_0"
 SRC="$SDK_WS/run-lftl/src"
-ARCH="-mcpu=cortex-a9 -mfpu=vfpv3 -mfloat-abi=hard"
+ARCH="-mcpu=cortex-a9 -mfpu=vfpv3 -mfloat-abi=hard -mfp16-format=ieee"
 
 mkdir -p "$OUT"
 rm -f "$OUT"/*.o
