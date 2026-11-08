@@ -223,12 +223,15 @@ static void PhaseReport(const char *name)
 	unsigned int gcCopy = now->gcCopiedPages - before.gcCopiedPages;
 	unsigned int gcGroups = now->gcGroups - before.gcGroups;
 	unsigned int empty = now->linesFreedEmpty - before.linesFreedEmpty;
+	unsigned int trained = now->gcTrainedLpns - before.gcTrainedLpns;
 
 	printf("%-30s", name);
 	if(reads)
 		printf(" | R %9u cmt %5.1f%% model %5.1f%% dbl-read %5.1f%%", reads, 100.0 * cmt / reads, 100.0 * model / reads, 100.0 * miss / reads);
 	if(writes)
 		printf(" | W %9u WA %5.2f tpW/W %5.3f gc %5u emptyLines %5u", writes, (double)(writes + gcCopy + tpw) / writes, (double)tpw / writes, gcGroups, empty);
+	if(gcCopy)
+		printf(" | trained %5.1f%%", 100.0 * trained / gcCopy);
 	(void)tpr;
 	if(now->modelRejected)
 		printf(" | REJECTED %u", now->modelRejected);
