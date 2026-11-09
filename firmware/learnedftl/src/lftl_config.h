@@ -42,10 +42,10 @@
 #define LFTL_ENABLE_MODEL				1
 #endif
 
-// Number of cached mappings. Same default as the current run-dftl so the two
-// can be compared directly. Must be a power of two.
+// Number of cached mappings. Must be a power of two. 32768 entries are 1.56% of
+// the 32GB experiment mode's 2,097,152 mappings, near the paper's 1.5%.
 #ifndef LFTL_CMT_CAPACITY
-#define LFTL_CMT_CAPACITY				8192
+#define LFTL_CMT_CAPACITY				32768
 #endif
 
 // A group holding this many lines is collected (paper/repo gc_threshold).
