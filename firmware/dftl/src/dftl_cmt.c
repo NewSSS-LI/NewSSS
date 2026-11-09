@@ -23,6 +23,11 @@ P_DFTL_CMT_HASH_TABLE dftlCmtHashPtr;
 
 #define DFTL_CMT_PROTECTED_CAPACITY	(DFTL_CMT_CAPACITY / 2)
 
+// dirty entries per translation page, so a write-back knows how many entries of
+// its page to flush along with the victim and can stop scanning early.
+static unsigned short dirtyPerTransPage[DFTL_NUM_TRANS_PAGES];
+#define CmtMvpn(lpn)	((lpn) / (DFTL_MAPPINGS_PER_TRANS_PAGE))
+
 static unsigned int freeListHead;			// singly-linked via lruNext
 
 static unsigned int probHead, probTail, probCount;
@@ -129,6 +134,9 @@ void DftlCmtInit(void)
 	}
 	freeListHead = 0;
 
+	for(i = 0; i < DFTL_NUM_TRANS_PAGES; i++)
+		dirtyPerTransPage[i] = 0;
+
 	probHead = probTail = DFTL_CMT_NONE;
 	protHead = protTail = DFTL_CMT_NONE;
 	probCount = 0;
@@ -195,6 +203,8 @@ void DftlCmtAdd(unsigned int lpn, unsigned int vsa, unsigned char dirty)
 	dftlCmtNodePtr->node[idx].vsa = vsa;
 	dftlCmtNodePtr->node[idx].valid = 1;
 	dftlCmtNodePtr->node[idx].dirty = dirty;
+	if(dirty)
+		dirtyPerTransPage[CmtMvpn(lpn)]++;
 	dftlCmtNodePtr->node[idx].protectedSeg = 0;
 	dftlCmtNodePtr->node[idx].lruPrev = DFTL_CMT_NONE;
 	dftlCmtNodePtr->node[idx].lruNext = DFTL_CMT_NONE;
@@ -212,6 +222,8 @@ void DftlCmtUpdate(unsigned int lpn, unsigned int vsa)
 		return;
 
 	dftlCmtNodePtr->node[idx].vsa = vsa;
+	if(!dftlCmtNodePtr->node[idx].dirty)
+		dirtyPerTransPage[CmtMvpn(lpn)]++;
 	dftlCmtNodePtr->node[idx].dirty = 1;
 
 	if(dftlCmtNodePtr->node[idx].protectedSeg)
@@ -252,6 +264,8 @@ unsigned char DftlCmtEvict(unsigned int *lpn, unsigned int *vsa, unsigned char *
 	*lpn = dftlCmtNodePtr->node[victim].lpn;
 	*vsa = dftlCmtNodePtr->node[victim].vsa;
 	*dirty = dftlCmtNodePtr->node[victim].dirty;
+	if(*dirty)
+		dirtyPerTransPage[CmtMvpn(*lpn)]--;
 
 	HashRemove(victim);
 
@@ -259,5 +273,23 @@ unsigned char DftlCmtEvict(unsigned int *lpn, unsigned int *vsa, unsigned char *
 	dftlCmtNodePtr->node[victim].lruNext = freeListHead;
 	freeListHead = victim;
 
+	return 1;
+}
+
+unsigned int DftlCmtDirtyCount(unsigned int mvpn)
+{
+	return dirtyPerTransPage[mvpn];
+}
+
+unsigned char DftlCmtTakeDirty(unsigned int lpn, unsigned int *vsa)
+{
+	unsigned int idx = HashFind(lpn);
+
+	if(idx == DFTL_CMT_NONE || !dftlCmtNodePtr->node[idx].dirty)
+		return 0;
+
+	*vsa = dftlCmtNodePtr->node[idx].vsa;
+	dftlCmtNodePtr->node[idx].dirty = 0;
+	dirtyPerTransPage[CmtMvpn(lpn)]--;
 	return 1;
 }

@@ -16,6 +16,7 @@
 
 #include <assert.h>
 #include "dftl_gtd.h"
+#include "dftl_cmt.h"
 #include "memory_map.h"
 
 P_DFTL_GTD dftlGtdPtr;
@@ -226,7 +227,7 @@ void DftlGtdWritebackMapping(unsigned int lpn, unsigned int vsa)
 	unsigned int dieNo = DftlMvpn2Die(mvpn);
 	unsigned int oldMppn, newMppn;
 	unsigned int *buf = (unsigned int*) DFTL_TRANS_STAGING_BUF_ADDR;
-	unsigned int i;
+	unsigned int i, remaining, base, cachedVsa;
 
 	// Allocate first: it may run translation GC, which uses the staging buffer and
 	// may move this mvpn's page, so the GTD entry is read after it.
@@ -249,6 +250,19 @@ void DftlGtdWritebackMapping(unsigned int lpn, unsigned int vsa)
 	}
 
 	buf[1 + offset] = vsa;
+
+	// Batch update: every other dirty cached entry of
+	// this translation page goes into the same program and becomes clean, so
+	// evicting them later costs no further translation page write.
+	remaining = DftlCmtDirtyCount(mvpn);
+	base = mvpn * DFTL_MAPPINGS_PER_TRANS_PAGE;
+	for(i = 0; remaining != 0 && i < DFTL_MAPPINGS_PER_TRANS_PAGE; i++)
+		if(DftlCmtTakeDirty(base + i, &cachedVsa))
+		{
+			buf[1 + i] = cachedVsa;
+			remaining--;
+		}
+
 	WriteTransPage(newMppn, DFTL_TRANS_STAGING_BUF_ADDR);
 
 	dftlGtdPtr->entry[mvpn].mppn = newMppn;

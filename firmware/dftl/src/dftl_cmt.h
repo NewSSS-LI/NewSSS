@@ -64,6 +64,15 @@ unsigned char DftlCmtEvict(unsigned int *lpn, unsigned int *vsa, unsigned char *
 
 unsigned char DftlCmtIsFull(void);
 
+// Batch update support (DFTL paper, Section 3.3): number of dirty cached entries
+// whose LPN belongs to translation page mvpn.
+unsigned int DftlCmtDirtyCount(unsigned int mvpn);
+
+// If lpn is cached and dirty, mark it clean, fill *vsa and return 1, else 0.
+// Called only after the entry's value has been put into a translation page
+// that is about to be programmed.
+unsigned char DftlCmtTakeDirty(unsigned int lpn, unsigned int *vsa);
+
 extern P_DFTL_CMT_NODE_ARRAY dftlCmtNodePtr;
 extern P_DFTL_CMT_HASH_TABLE dftlCmtHashPtr;
 
