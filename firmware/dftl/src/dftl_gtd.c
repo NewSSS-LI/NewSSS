@@ -145,27 +145,26 @@ static void DftlEraseTransBlock(unsigned int dieNo, unsigned int blockNo)
 	DftlPutToTransFbList(dieNo, blockNo);
 }
 
+// One free translation block is always kept for GC. When taking a new current
+// block leaves none free, GC runs right away: its copies go into the new, empty
+// current block, so GC never needs a block itself (no recursion). A victim holds
+// at most DFTL_NUM_TRANS_PAGES / USER_DIES valid pages, far fewer than a block.
 static unsigned int DftlAllocTransSlice(unsigned int dieNo)
 {
 	P_DFTL_TRANS_DIE_ENTRY die = &dftlTransDieMapPtr->die[dieNo];
-	unsigned int currentBlock = die->currentBlock;
 	unsigned int vsa;
 
-	if(virtualBlockMapPtr->block[dieNo][currentBlock].currentPage == USER_PAGES_PER_BLOCK)
+	if(virtualBlockMapPtr->block[dieNo][die->currentBlock].currentPage == USER_PAGES_PER_BLOCK)
 	{
-		currentBlock = DftlGetFromTransFbList(dieNo);
-		if(currentBlock == BLOCK_FAIL)
-		{
+		die->currentBlock = DftlGetFromTransFbList(dieNo);
+		if(die->currentBlock == BLOCK_FAIL)
+			assert(!"[WARNING] DFTL: no free translation block available [WARNING]");
+		if(die->freeBlockCnt == 0)
 			DftlGcTranslationBlock(dieNo);
-			currentBlock = DftlGetFromTransFbList(dieNo);
-			if(currentBlock == BLOCK_FAIL)
-				assert(!"[WARNING] DFTL: no free translation block available [WARNING]");
-		}
-		die->currentBlock = currentBlock;
 	}
 
-	vsa = Vorg2VsaTranslation(dieNo, currentBlock, virtualBlockMapPtr->block[dieNo][currentBlock].currentPage);
-	virtualBlockMapPtr->block[dieNo][currentBlock].currentPage++;
+	vsa = Vorg2VsaTranslation(dieNo, die->currentBlock, virtualBlockMapPtr->block[dieNo][die->currentBlock].currentPage);
+	virtualBlockMapPtr->block[dieNo][die->currentBlock].currentPage++;
 
 	return vsa;
 }
@@ -224,11 +223,15 @@ void DftlGtdWritebackMapping(unsigned int lpn, unsigned int vsa)
 {
 	unsigned int mvpn = DftlLpn2Mvpn(lpn);
 	unsigned int offset = DftlLpn2Offset(lpn);
-	unsigned int oldMppn = dftlGtdPtr->entry[mvpn].mppn;
 	unsigned int dieNo = DftlMvpn2Die(mvpn);
-	unsigned int newMppn;
+	unsigned int oldMppn, newMppn;
 	unsigned int *buf = (unsigned int*) DFTL_TRANS_STAGING_BUF_ADDR;
 	unsigned int i;
+
+	// Allocate first: it may run translation GC, which uses the staging buffer and
+	// may move this mvpn's page, so the GTD entry is read after it.
+	newMppn = DftlAllocTransSlice(dieNo);
+	oldMppn = dftlGtdPtr->entry[mvpn].mppn;
 
 	if(oldMppn != DFTL_GTD_NONE)
 	{
@@ -246,8 +249,6 @@ void DftlGtdWritebackMapping(unsigned int lpn, unsigned int vsa)
 	}
 
 	buf[1 + offset] = vsa;
-
-	newMppn = DftlAllocTransSlice(dieNo);
 	WriteTransPage(newMppn, DFTL_TRANS_STAGING_BUF_ADDR);
 
 	dftlGtdPtr->entry[mvpn].mppn = newMppn;
