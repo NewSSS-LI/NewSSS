@@ -295,6 +295,11 @@ void InitBlockMap()
 			phyBlockNo = Vblock2PblockOfTbsTranslation(virtualBlockNo);
 			remappedPhyBlock = phyBlockMapPtr->phyBlock[dieNo][phyBlockNo].remappedPhyBlock;
 			virtualBlockMapPtr->block[dieNo][virtualBlockNo].bad = phyBlockMapPtr->phyBlock[dieNo][remappedPhyBlock].bad;
+#if EXP_LOGICAL_GB
+			// Blocks past the experiment's physical size stay out of use, like bad ones.
+			if(virtualBlockNo >= EXP_USER_BLOCKS_PER_DIE)
+				virtualBlockMapPtr->block[dieNo][virtualBlockNo].bad = 1;
+#endif
 
 			virtualBlockMapPtr->block[dieNo][virtualBlockNo].free = 1;
 			virtualBlockMapPtr->block[dieNo][virtualBlockNo].invalidSliceCnt = 0;

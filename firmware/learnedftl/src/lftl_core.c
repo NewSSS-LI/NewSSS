@@ -514,7 +514,7 @@ static unsigned int AllocSlice(unsigned int g)
 // Entry points
 //------------------------------------------------------------------
 
-void LftlInit(P_LFTL_META meta, unsigned int numGroups)
+void LftlInit(P_LFTL_META meta, unsigned int numGroups, unsigned int numLines)
 {
 	unsigned int i, line, usable = 0, tpFound = 0;
 
@@ -555,7 +555,8 @@ void LftlInit(P_LFTL_META meta, unsigned int numGroups)
 		m->line[line].wp = 0;
 		m->line[line].valid = 0;
 
-		if(LftlPortLineIsBad(line))
+		// Lines past numLines stay out of use, like bad ones.
+		if((line >= numLines) || LftlPortLineIsBad(line))
 		{
 			m->line[line].owner = LFTL_OWNER_BAD;
 			continue;

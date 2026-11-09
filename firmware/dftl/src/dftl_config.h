@@ -33,8 +33,10 @@
 // experiment for this board.
 //
 // Must be a power of two (hash table sizing depends on it) and >= 4.
+// 65536 entries are 3.1% of the 32GB experiment mode's 2,097,152 mappings,
+// the size used to compare with LearnedFTL.
 //------------------------------------------------------------------
-#define DFTL_CMT_CAPACITY				4096
+#define DFTL_CMT_CAPACITY				65536
 
 //------------------------------------------------------------------
 // Translation page / GTD layout.

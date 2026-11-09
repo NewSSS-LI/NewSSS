@@ -42,10 +42,10 @@
 #define LFTL_ENABLE_MODEL				1
 #endif
 
-// Number of cached mappings. Same default as the current run-dftl so the two
-// can be compared directly. Must be a power of two.
+// Number of cached mappings. Must be a power of two. 32768 entries are 1.56% of
+// the 32GB experiment mode's 2,097,152 mappings, near the paper's 1.5%.
 #ifndef LFTL_CMT_CAPACITY
-#define LFTL_CMT_CAPACITY				8192
+#define LFTL_CMT_CAPACITY				32768
 #endif
 
 // A group holding this many lines is collected (paper/repo gc_threshold).
@@ -85,6 +85,12 @@
 #define LFTL_SLICES_PER_GROUP			(LFTL_ENTRIES_PER_TP)	// table size; only LFTL_GROUP_SPAN entries are used
 #define LFTL_GROUP_OF(lsa)				((lsa) / LFTL_GROUP_SPAN)
 #define LFTL_MAX_GROUPS					(LFTL_NUM_LINES)
+
+// Lines used for a reduced-capacity experiment (EXP_LOGICAL_GB): the same
+// lines-per-group ratio as the whole board, 2048 lines for 1999 groups. The
+// paper's 6.25% over-provisioning is not enough here: every group needs a line
+// of its own because cross-group allocation is not implemented.
+#define LFTL_LINES_FOR_GROUPS(g)		(((g) * 2048 + 1998) / 1999)
 
 // The design relies on these; a different board must fail here, not at runtime.
 typedef char lftlCheckLineFitsGroup[(LFTL_SLICES_PER_LINE == LFTL_SLICES_PER_GROUP) ? 1 : -1];

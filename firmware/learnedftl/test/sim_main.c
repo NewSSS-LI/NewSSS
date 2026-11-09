@@ -119,6 +119,8 @@ static unsigned int Rand(void)
 	return (unsigned int)(rngState >> 11);
 }
 
+static unsigned int numLines = LFTL_NUM_LINES;
+
 static void Reset(unsigned int numGroups)
 {
 	unsigned int i;
@@ -134,7 +136,7 @@ static void Reset(unsigned int numGroups)
 	}
 	memset(blockProg, 0, sizeof(unsigned short) * USER_DIES * USER_BLOCKS_PER_DIE);
 	numLsa = numGroups * LFTL_GROUP_SPAN;
-	LftlInit(meta, numGroups);
+	LftlInit(meta, numGroups, numLines);
 }
 
 static void WriteSlice(unsigned int lsa)
@@ -248,6 +250,13 @@ int main(int argc, char **argv)
 	unsigned int capacity, smallRange;
 	unsigned long long full;
 
+	// Optional: number of groups, e.g. 556 for the 32GB experiment mode (issue #3).
+	if(argc > 2)
+	{
+		numGroups = (unsigned int)atoi(argv[2]);
+		numLines = LFTL_LINES_FOR_GROUPS(numGroups);
+	}
+
 	rngState = 0x9E3779B97F4A7C15ULL ^ ((unsigned long long)seed << 32 | seed);
 
 	nandTag = malloc(sizeof(PageTag) * TOTAL_SLICES);
@@ -259,8 +268,8 @@ int main(int argc, char **argv)
 	meta = malloc(sizeof(LFTL_META));
 
 	setvbuf(stdout, NULL, _IOLBF, 4096);
-	printf("lines %d, span %d, groups %u, model %s, CMT %d, gc threshold %d, seed %u, meta %u KB (model %u KB)\n\n",
-		LFTL_NUM_LINES, LFTL_GROUP_SPAN, numGroups, LFTL_ENABLE_MODEL ? "on" : "off", LFTL_CMT_CAPACITY, LFTL_GC_LINE_THRESHOLD, seed,
+	printf("lines %d (used %u), span %d, groups %u, model %s, CMT %d, gc threshold %d, seed %u, meta %u KB (model %u KB)\n\n",
+		LFTL_NUM_LINES, numLines, LFTL_GROUP_SPAN, numGroups, LFTL_ENABLE_MODEL ? "on" : "off", LFTL_CMT_CAPACITY, LFTL_GC_LINE_THRESHOLD, seed,
 		(unsigned int)(sizeof(LFTL_META) / 1024), (unsigned int)(sizeof(LFTL_MODEL) * numGroups / 1024));
 
 	// Smallest legal read on empty media.

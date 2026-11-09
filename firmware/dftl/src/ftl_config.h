@@ -258,4 +258,19 @@ extern char micron_nand_type;
 extern unsigned int BYTES_PER_SPARE_REGION_OF_NAND_ROW;
 extern unsigned int EXTENDED_BLOCKS_PER_LUN;
 
+//------------------------------------------------------------------
+// Experiment mode (issue #3). 0: the whole board, as before. N: expose N GB to
+// the host and use only the physical space LearnedFTL uses for that size, so all
+// FTLs are compared on the same flash (the LearnedFTL paper evaluates a 32GB
+// SSD). Set with -DEXP_LOGICAL_GB=32 or here.
+//------------------------------------------------------------------
+#ifndef EXP_LOGICAL_GB
+#define EXP_LOGICAL_GB					0
+#endif
+
+// LearnedFTL needs one line (one block per die) per group of 3776 slices plus the
+// whole board's spare ratio, 2048 lines for 1999 groups: 570 blocks per die at 32GB.
+#define EXP_LFTL_GROUP_SPAN				3776
+#define EXP_USER_BLOCKS_PER_DIE			((((EXP_LOGICAL_GB * 65536 + EXP_LFTL_GROUP_SPAN - 1) / EXP_LFTL_GROUP_SPAN) * 2048 + 1998) / 1999)
+
 #endif /* FTL_CONFIG_H_ */

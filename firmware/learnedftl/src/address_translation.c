@@ -62,7 +62,7 @@ unsigned int mbPerbadBlockSpace;
 
 void InitAddressMap()
 {
-	unsigned int numGroups, blockNo, dieNo;
+	unsigned int numGroups, numLines, blockNo, dieNo;
 
 	logicalSliceMapPtr = (P_LOGICAL_SLICE_MAP ) LOGICAL_SLICE_MAP_ADDR;
 	virtualSliceMapPtr = (P_VIRTUAL_SLICE_MAP) VIRTUAL_SLICE_MAP_ADDR;
@@ -88,9 +88,15 @@ void InitAddressMap()
 
 	// LearnedFTL takes over address translation, allocation and GC from here on.
 	// Must follow InitBlockDieMap(): the bad block information has to be final.
+#if EXP_LOGICAL_GB
+	numGroups = (EXP_LOGICAL_GB * 1024 * ((1024 * 1024) / BYTES_PER_DATA_REGION_OF_SLICE) + LFTL_GROUP_SPAN - 1) / LFTL_GROUP_SPAN;
+	numLines = LFTL_LINES_FOR_GROUPS(numGroups);
+#else
 	numGroups = (((MB_PER_SSD - (MB_PER_MIN_FREE_BLOCK_SPACE + mbPerbadBlockSpace + MB_PER_OVER_PROVISION_BLOCK_SPACE)) * ((1024 * 1024) / BYTES_PER_DATA_REGION_OF_SLICE)) + LFTL_GROUP_SPAN - 1) / LFTL_GROUP_SPAN;
-	LftlInit((P_LFTL_META) LFTL_META_ADDR, numGroups);
-	xil_printf("[ LearnedFTL: %d groups, %d KB metadata, model %s, CMT %d entries ]\r\n", numGroups, sizeof(LFTL_META) / 1024, LFTL_ENABLE_MODEL ? "on" : "off", LFTL_CMT_CAPACITY);
+	numLines = LFTL_NUM_LINES;
+#endif
+	LftlInit((P_LFTL_META) LFTL_META_ADDR, numGroups, numLines);
+	xil_printf("[ LearnedFTL: %d groups, %d lines, %d KB metadata, model %s, CMT %d entries ]\r\n", numGroups, numLines, sizeof(LFTL_META) / 1024, LFTL_ENABLE_MODEL ? "on" : "off", LFTL_CMT_CAPACITY);
 }
 
 void InitSliceMap()

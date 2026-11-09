@@ -258,4 +258,13 @@ extern char micron_nand_type;
 extern unsigned int BYTES_PER_SPARE_REGION_OF_NAND_ROW;
 extern unsigned int EXTENDED_BLOCKS_PER_LUN;
 
+//------------------------------------------------------------------
+// Experiment mode (issue #3). 0: the whole board, as before. N: expose N GB to
+// the host and use only the physical space that size needs (the LearnedFTL
+// paper evaluates a 32GB SSD). Set with -DEXP_LOGICAL_GB=32 or here.
+//------------------------------------------------------------------
+#ifndef EXP_LOGICAL_GB
+#define EXP_LOGICAL_GB					0
+#endif
+
 #endif /* FTL_CONFIG_H_ */
