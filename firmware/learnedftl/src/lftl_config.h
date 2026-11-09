@@ -86,6 +86,12 @@
 #define LFTL_GROUP_OF(lsa)				((lsa) / LFTL_GROUP_SPAN)
 #define LFTL_MAX_GROUPS					(LFTL_NUM_LINES)
 
+// Lines used for a reduced-capacity experiment (EXP_LOGICAL_GB): the same
+// lines-per-group ratio as the whole board, 2048 lines for 1999 groups. The
+// paper's 6.25% over-provisioning is not enough here: every group needs a line
+// of its own because cross-group allocation is not implemented.
+#define LFTL_LINES_FOR_GROUPS(g)		(((g) * 2048 + 1998) / 1999)
+
 // The design relies on these; a different board must fail here, not at runtime.
 typedef char lftlCheckLineFitsGroup[(LFTL_SLICES_PER_LINE == LFTL_SLICES_PER_GROUP) ? 1 : -1];
 typedef char lftlCheckGroupSpan[(LFTL_GROUP_SPAN <= LFTL_SLICES_PER_GROUP) ? 1 : -1];

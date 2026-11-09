@@ -87,7 +87,8 @@ typedef struct _LFTL_META {
 } LFTL_META, *P_LFTL_META;
 
 // numGroups = logical capacity in slices / LFTL_GROUP_SPAN, rounded up.
-void LftlInit(P_LFTL_META meta, unsigned int numGroups);
+// Only lines below numLines are used (all of them: LFTL_NUM_LINES).
+void LftlInit(P_LFTL_META meta, unsigned int numGroups, unsigned int numLines);
 
 // VSA of lsa or VSA_NONE if it was never written.
 unsigned int LftlRead(unsigned int lsa);
