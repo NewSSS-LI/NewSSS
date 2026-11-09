@@ -7,12 +7,11 @@
 // VSA for LPN (mvpn * DFTL_MAPPINGS_PER_TRANS_PAGE + offset), or VSA_NONE
 // if that LPN has never been written.
 //
-// All NAND I/O here is issued synchronously (SyncAllLowLevelReqDone right
-// after each read/write) because the code inspects/patches buffer contents
-// between steps -- unlike GreedyFTL's GC valid-page-copy, which never looks
-// at the data it moves. This trades some pipelining for straightforward
-// correctness; revisit if translation-path latency shows up as a
-// bottleneck in FIO results.
+// All NAND I/O here is synchronous because the code inspects/patches buffer
+// contents between steps -- unlike GreedyFTL's GC valid-page-copy, which never
+// looks at the data it moves. Each access waits for its own request only
+// (WaitForRequest), not for every queue in the SSD (SyncAllLowLevelReqDone),
+// so requests already running on other dies keep going.
 //////////////////////////////////////////////////////////////////////////////////
 
 #include <assert.h>
@@ -23,6 +22,18 @@ P_DFTL_GTD dftlGtdPtr;
 P_DFTL_TRANS_DIE_MAP dftlTransDieMapPtr;
 
 #define DftlMvpn2Die(mvpn)	((mvpn) % USER_DIES)
+
+// Poll until this one request has completed and returned to the free queue.
+// The scheduling calls never allocate a request slot, so the slot cannot be
+// reused while it is polled. Same approach as LearnedFTL's lftl_port_cosmos.c.
+static void WaitForRequest(unsigned int reqSlotTag)
+{
+	while(reqPoolPtr->reqPool[reqSlotTag].reqQueueType != REQ_QUEUE_TYPE_FREE)
+	{
+		CheckDoneNvmeDmaReq();
+		SchedulingNandReq();
+	}
+}
 
 static void ReadTransPage(unsigned int vsa, unsigned int bufAddr)
 {
@@ -40,7 +51,7 @@ static void ReadTransPage(unsigned int vsa, unsigned int bufAddr)
 	reqPoolPtr->reqPool[reqSlotTag].nandInfo.virtualSliceAddr = vsa;
 
 	SelectLowLevelReqQ(reqSlotTag);
-	SyncAllLowLevelReqDone();
+	WaitForRequest(reqSlotTag);
 }
 
 static void WriteTransPage(unsigned int vsa, unsigned int bufAddr)
@@ -59,7 +70,7 @@ static void WriteTransPage(unsigned int vsa, unsigned int bufAddr)
 	reqPoolPtr->reqPool[reqSlotTag].nandInfo.virtualSliceAddr = vsa;
 
 	SelectLowLevelReqQ(reqSlotTag);
-	SyncAllLowLevelReqDone();
+	WaitForRequest(reqSlotTag);
 }
 
 static void DftlPutToTransFbList(unsigned int dieNo, unsigned int blockNo)
@@ -124,7 +135,7 @@ static void DftlEraseTransBlock(unsigned int dieNo, unsigned int blockNo)
 	reqPoolPtr->reqPool[reqSlotTag].nandInfo.programmedPageCnt = virtualBlockMapPtr->block[dieNo][blockNo].currentPage;
 
 	SelectLowLevelReqQ(reqSlotTag);
-	SyncAllLowLevelReqDone();
+	WaitForRequest(reqSlotTag);
 
 	virtualBlockMapPtr->block[dieNo][blockNo].free = 1;
 	virtualBlockMapPtr->block[dieNo][blockNo].eraseCnt++;
