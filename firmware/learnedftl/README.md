@@ -1,8 +1,10 @@
 # LearnedFTL on Cosmos+ OpenSSD
 
-LearnedFTL(Wang et al., HPCA'24)을 Cosmos+ OpenSSD Micron 8C2W 보드용으로 이식한 펌웨어입니다. GreedyFTL(`run-gftl3`)을 복제해 주소 변환, 할당, GC를 교체했습니다. 설계와 논문·레포 분석은 [`docs/learnedftl_analysis.md`](../../docs/learnedftl_analysis.md)를 참고하세요.
+LearnedFTL(Wang et al., HPCA'24)을 Cosmos+ OpenSSD Micron 8C2W 보드용으로 이식한 펌웨어입니다. GreedyFTL(`run-gftl3`)을 복제해 주소 변환, 할당, GC를 교체했습니다.
 
-**현재 상태:** PC 시뮬레이터 검증과 ARM 빌드까지 완료했고, **실제 보드에서는 아직 실행하지 않았습니다.**
+모델은 논문 설정대로 k, b를 2B float16으로 저장하고, 학습과 예측은 float32로 계산합니다. 정수 연산만 쓰는 고정소수점 버전은 비교용으로 [`../learnedftl-fixed`](../learnedftl-fixed)에 있습니다. 설계와 논문·레포 분석은 [`docs/learnedftl_analysis.md`](../../docs/learnedftl_analysis.md)를 참고하세요.
+
+**현재 상태:** 고정소수점 버전은 보드에서 FIO 검증을 통과했습니다. float16 버전은 PC 시뮬레이터 검증과 ARM 빌드까지 완료했고, **보드에서는 아직 실행하지 않았습니다.**
 
 ## 폴더 구성
 
@@ -15,7 +17,7 @@ LearnedFTL(Wang et al., HPCA'24)을 Cosmos+ OpenSSD Micron 8C2W 보드용으로 
 
 작업 원본은 `cosm-plus-sys.sdk/run-lftl`에 있습니다. 한글 경로에서는 SDK가 깨지므로 영문 경로를 유지하세요.
 
-1. SDK에서 `File → Import → Existing Projects into Workspace`로 `run-lftl`을 가져와 빌드합니다. 워크스페이스에 `run-gftl3_bsp`가 있어야 합니다.
+1. SDK에서 `File → Import → Existing Projects into Workspace`로 `run-lftl`을 가져와 빌드합니다. 워크스페이스에 `run-gftl3_bsp`가 있어야 합니다. `_Float16`을 쓰므로 컴파일 옵션에 `-mfp16-format=ieee`가 필요하며, `.cproject`에 이미 들어 있습니다.
 2. **첫 실행은 검증 모드로 합니다.** `src/lftl_config.h`에서 `LFTL_SHADOW_CHECK`를 `1`로 바꾸고 빌드합니다. 모든 변환을 전체 매핑표와 비교하고, 불일치하면 UART에 `[LFTL FATAL]`을 출력한 뒤 멈춥니다.
 3. `Xilinx Tools → Program FPGA`(기존 비트스트림)를 실행한 뒤 `Run As → Launch on Hardware`로 실행합니다.
 4. UART 부팅 로그를 확인합니다.
@@ -75,10 +77,10 @@ sudo fio --name=rr --filename=/dev/nvme0n1 --rw=randread --bs=16k --runtime=60 -
 
 ## 시뮬레이터 실행
 
-Vivado에 포함된 mingw gcc를 사용합니다.
+`_Float16`을 지원하는 GCC 12 이상이 필요합니다. Vivado에 포함된 GCC 6.2는 지원하지 않으므로 WinLibs GCC 16.2를 `C:/tools/winlibs`에 풀어 사용합니다.
 
 ```bash
-export PATH=/c/Xilinx/Vivado/2019.1/msys64/mingw64/bin:$PATH
+export PATH=/c/tools/winlibs/mingw64/bin:$PATH
 cd test && mkdir -p build
 gcc -std=gnu99 -O2 -DLFTL_HOST_TEST -DLFTL_SHADOW_CHECK=1 -DUSER_BLOCKS_PER_DIE=256 -DLFTL_GROUP_SPAN=3840 -I../src \
     sim_main.c ../src/lftl_core.c ../src/lftl_model.c ../src/lftl_cmt.c -o build/sim.exe

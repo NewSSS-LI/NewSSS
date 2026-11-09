@@ -100,8 +100,6 @@ typedef char lftlCheckCmtPowerOfTwo[((LFTL_CMT_CAPACITY & (LFTL_CMT_CAPACITY - 1
 #define LFTL_PIECE_SHIFT				6
 #define LFTL_LPNS_PER_PIECE				(1 << LFTL_PIECE_SHIFT)
 #define LFTL_PIECES_PER_GROUP			(LFTL_SLICES_PER_GROUP >> LFTL_PIECE_SHIFT)
-#define LFTL_K_SHIFT					15
-#define LFTL_K_ONE						(1 << LFTL_K_SHIFT)
 
 // Sequential initialization: shortest run worth replacing a piece's model for.
 #define LFTL_SEQ_MIN_RUN				2
