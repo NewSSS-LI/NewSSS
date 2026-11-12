@@ -29,6 +29,9 @@ FB_WORKLOADS="$TOOLS_DIR/filebench/share/filebench/workloads"
 DB_BENCH="$TOOLS_DIR/rocksdb/db_bench"
 
 export XDG_RUNTIME_DIR=/run/user/$(id -u)
+# Tool output in English whatever the host language, so meta.txt and the parsers
+# see the same text on every host (free prints "메모리:" instead of "Mem:" in ko_KR).
+export LC_ALL=C
 # Filebench and db_bench run in a 2GB memory cgroup so the page cache cannot
 # hide the SSD (the paper's host has 128GB of DRAM, the SSD 32GB).
 LIMIT="systemd-run --user --scope -q -p MemoryMax=$MEM_LIMIT -p MemorySwapMax=0"
