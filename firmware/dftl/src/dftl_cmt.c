@@ -293,3 +293,20 @@ unsigned char DftlCmtTakeDirty(unsigned int lpn, unsigned int *vsa)
 	dirtyPerTransPage[CmtMvpn(lpn)]--;
 	return 1;
 }
+
+// GC moved a page: if its mapping is cached, point the entry at the new VSA and
+// mark it dirty without changing its LRU position (GC is no access by the host).
+// Returns 1 if cached, 0 otherwise.
+unsigned char DftlCmtGcUpdate(unsigned int lpn, unsigned int vsa)
+{
+	unsigned int idx = HashFind(lpn);
+
+	if(idx == DFTL_CMT_NONE)
+		return 0;
+
+	dftlCmtNodePtr->node[idx].vsa = vsa;
+	if(!dftlCmtNodePtr->node[idx].dirty)
+		dirtyPerTransPage[CmtMvpn(lpn)]++;
+	dftlCmtNodePtr->node[idx].dirty = 1;
+	return 1;
+}

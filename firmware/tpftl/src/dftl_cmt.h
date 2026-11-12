@@ -81,6 +81,9 @@ unsigned char DftlCmtEvict(unsigned int *lpn, unsigned int *vsa, unsigned char *
 
 unsigned char DftlCmtIsFull(void);
 
+// GC: update a cached mapping in place (dirty, LRU untouched). 1 if cached.
+unsigned char DftlCmtGcUpdate(unsigned int lpn, unsigned int vsa);
+
 unsigned int DftlCmtSelectivePrefetchOn(void);
 
 // Batch update: number of dirty cached entries of translation page mvpn.

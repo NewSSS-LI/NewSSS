@@ -909,6 +909,9 @@ void InvalidateOldVsa(unsigned int logicalSliceAddr)
 		// unlink
 		SelectiveGetFromGcVictimList(dieNo, blockNo);
 		virtualBlockMapPtr->block[dieNo][blockNo].invalidSliceCnt++;
+		// The page is invalid from now on: GC tells valid pages by their P2L entry
+		// alone, without looking the mapping up.
+		virtualSliceMapPtr->virtualSlice[virtualSliceAddr].logicalSliceAddr = LSA_NONE;
 		// (no need to clear the CMT/GTD entry to VSA_NONE here: the only
 		// caller, AddrTransWrite(), immediately overwrites it via
 		// DftlSetMapping() right after this returns)

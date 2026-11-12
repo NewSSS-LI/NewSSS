@@ -67,6 +67,9 @@ void DftlGtdWritebackMapping(unsigned int lpn, unsigned int vsa);
 // GreedyFTL's segregated invalid-count victim list.
 void DftlGcTranslationBlock(unsigned int dieNo);
 
+// GC batch update: new VSAs of uncached moved pages of one translation page.
+void DftlGtdUpdateMappings(unsigned int mvpn, const unsigned int *offset, const unsigned int *vsa, unsigned int count);
+
 extern P_DFTL_GTD dftlGtdPtr;
 extern P_DFTL_TRANS_DIE_MAP dftlTransDieMapPtr;
 
