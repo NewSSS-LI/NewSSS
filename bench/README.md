@@ -8,6 +8,18 @@
 | 보드 2 | DFTL, LeaFTL | `firmware/dftl`, `firmware/leaftl` |
 | 보드 3 | GreedyFTL | `firmware/greedyftl` |
 
+- LearnedFTL은 `firmware/learnedftl`(float16, 논문 설정)을 쓴다. `firmware/learnedftl-fixed`는 비교용이라 이 측정에 쓰지 않는다.
+- LeaFTL은 아직 레포에 없다. 담당자가 `firmware/leaftl`에 올린 뒤 측정한다.
+
+## 0. 시작 전에 확인할 것
+
+- **스크립트는 FTL 종류와 상관없이 같다.** 호스트에서 보드(NVMe 장치)에 같은 부하를 줄 뿐이고, 보드에 어떤 FTL이 올라가 있는지는 알 수 없다.
+- **`config.sh`의 `FTL=`은 사람이 맞게 적는다.** 결과 폴더 이름과 CSV에 들어가는 이름표다. 펌웨어를 바꿔 올릴 때마다 함께 바꾼다(`learnedftl`, `tpftl`, `dftl`, `leaftl`, `greedyftl` 중 하나).
+- **펌웨어는 레포 main의 `firmware/<ftl>/src`로 빌드한다.** 모든 FTL이 GC 복사를 16개 die에 나눠 하는 버전이어야 비교가 공정하다. 다른 브랜치나 개인 사본으로 빌드하지 않는다.
+- **빌드 옵션에 `-DEXP_LOGICAL_GB=32`를 넣는다.** 다른 크기로 빌드하면 대상 확인에서 멈춘다.
+- **레포 밖에서 가져온 펌웨어(LeaFTL 등)는** 올린 뒤 `./check_board.sh`가 `OK`인지 먼저 본다. 실패하면 스크립트의 확인값을 고치지 말고 펌웨어를 맞춘다(모델 `Cosmos+ OpenSSD`, 크기 32GB).
+- **`FW_SHA256`은 올린 ELF로 구한다.** 개발 PC에서 `sha256sum <ELF 경로>`로 구하고, Windows PowerShell이면 `Get-FileHash <ELF 경로>`를 쓴다. `meta.txt`에 기록되어 어떤 펌웨어로 쟀는지 나중에 확인할 수 있다.
+
 ## 1. 측정하는 것
 
 FTL 하나마다 `suite.sh`가 아래를 순서대로 한 번에 돌린다. 앞 단계가 SSD에 남긴 상태에서 다음 단계를 재므로 **순서와 구성을 바꾸지 않는다.**
@@ -126,6 +138,7 @@ cp config.example.sh config.sh     # FTL, BOARD_ID 등을 채운다
 > - 호스트 접속: `<ssh 별칭 또는 이 PC>`
 >
 > 지켜야 할 것:
+> - "0. 시작 전에 확인할 것"부터 하나씩 확인하고 시작해.
 > - 스크립트와 펌웨어의 조건(옵션, 순서, 시간, CMT 크기, 메모리 제한)을 바꾸지 마.
 > - 바꿔야 할 것 같으면 먼저 나에게 물어봐.
 > - 대상 확인(`check_board.sh`)이 실패하면 멈추고 알려줘.
