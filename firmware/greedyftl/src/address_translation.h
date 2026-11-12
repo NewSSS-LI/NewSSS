@@ -66,6 +66,9 @@
 
 #define RESERVED_FREE_BLOCK_COUNT	0x1
 
+// Upper bound on GC runs for one host allocation (see FindFreeVirtualSlice).
+#define GC_MAX_RUNS_PER_ALLOC		(2 * USER_DIES)
+
 #define GET_FREE_BLOCK_NORMAL	0x0
 #define GET_FREE_BLOCK_GC		0x1
 
@@ -192,7 +195,7 @@ void InitBlockDieMap();
 unsigned int AddrTransRead(unsigned int logicalSliceAddr);
 unsigned int AddrTransWrite(unsigned int logicalSliceAddr);
 unsigned int FindFreeVirtualSlice();
-unsigned int FindFreeVirtualSliceForGc(unsigned int copyTargetDieNo, unsigned int victimBlockNo);
+unsigned int FindFreeVirtualSliceForGc(unsigned int srcDieNo, unsigned int victimBlockNo);
 unsigned int FindDieForFreeSliceAllocation();
 
 void InvalidateOldVsa(unsigned int logicalSliceAddr);
