@@ -24,7 +24,7 @@ DFTL(Demand-based Flash Translation Layer, Gupta et al. ASPLOS'09) 구현. Greed
 
 ## 수정한 파일 (GreedyFTL 원본 대비)
 - `src/address_translation.c/h` — `AddrTransRead`/`AddrTransWrite`/`InvalidateOldVsa`가 `logicalSliceMapPtr[]` 직접 접근 대신 `DftlGetMapping`/`DftlSetMapping`(CMT+GTD 경유)을 사용하도록 변경. `InitAddressMap()`에서 `DftlCmtInit()`/`DftlGtdInit()` 호출 추가.
-- `src/garbage_collection.c` — valid page 판별과 forward map 갱신 두 곳만 DFTL 방식(lazy copying + batch update, 논문 3.3절)으로 교체. victim 선정/block erase/free list 관리 등 나머지 로직은 GreedyFTL과 동일.
+- `src/garbage_collection.c` — valid page는 P2L(물리→논리 표)로 판별한다. 덮어쓸 때 `InvalidateOldVsa`가 옛 위치의 P2L을 지우므로 매핑 조회나 변환 페이지 읽기가 없다. 옮긴 페이지의 매핑은 캐시에 있으면 CMT에서 갱신하고, 없으면 GC 끝에 변환 페이지마다 한 번 읽고 한 번 쓴다(batch update, 논문 3.3절). 복사는 16 die에 돌아가며 병렬로 한다(GreedyFTL 원본은 피해 블록의 die 안에서 한 페이지씩). victim은 die별 greedy로 고른다.
 - `src/memory_map.h` — CMT/GTD/translation block 풀을 위한 DRAM 주소 추가(기존 주소 체계는 건드리지 않고 뒤에 추가), translation page 스테이징 버퍼는 `RESERVED_DATA_BUFFER_BASE_ADDR` 재사용.
 
 나머지 파일(`nvme/`, `request_*.c/h`, `data_buffer.c/h`, `ftl_config.c/h`, `main.c`, `nsc_driver.c/h` 등)은 원본 벤더 포크(`CRZ-Technology/OpenSSD-OpenChannelSSD`)의 `run-gftl3`와 100% 동일, 전혀 수정 안 함.

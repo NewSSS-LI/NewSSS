@@ -301,3 +301,22 @@ void DftlCmtTakeDirtyOfTp(unsigned int mvpn, unsigned int *buf)
 		}
 	C.tp[mvpn].dirtyCnt = 0;
 }
+
+// GC moved a page: if its mapping is cached, point the entry at the new VSA and
+// mark it dirty without changing its LRU position (GC is no access by the host).
+// Returns 1 if cached, 0 otherwise.
+unsigned char DftlCmtGcUpdate(unsigned int lpn, unsigned int vsa)
+{
+	unsigned int idx = Find(lpn);
+
+	if(idx == DFTL_CMT_NONE)
+		return 0;
+
+	if(!N(idx).dirty)
+	{
+		N(idx).dirty = 1;
+		C.tp[TpOf(lpn)].dirtyCnt++;
+	}
+	N(idx).vsa = vsa;
+	return 1;
+}

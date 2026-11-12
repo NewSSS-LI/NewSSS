@@ -789,7 +789,7 @@ unsigned int AddrTransWrite(unsigned int logicalSliceAddr)
 
 unsigned int FindFreeVirtualSlice()
 {
-	unsigned int currentBlock, virtualSliceAddr, dieNo;
+	unsigned int currentBlock, virtualSliceAddr, dieNo, gcRuns;
 
 	dieNo = sliceAllocationTargetDie;
 	currentBlock = virtualDieMapPtr->die[dieNo].currentBlock;
@@ -802,19 +802,27 @@ unsigned int FindFreeVirtualSlice()
 			virtualDieMapPtr->die[dieNo].currentBlock = currentBlock;
 		else
 		{
-			GarbageCollection(dieNo);
-			currentBlock = virtualDieMapPtr->die[dieNo].currentBlock;
-
-			if(virtualBlockMapPtr->block[dieNo][currentBlock].currentPage == USER_PAGES_PER_BLOCK)
+			// GC copies go to every die (FindFreeVirtualSliceForGc), so one run frees
+			// this die's victim block but may leave its free list at the reserve.
+			// Collect again until this die has room.
+			for(gcRuns = 0; ; gcRuns++)
 			{
+				if(gcRuns == GC_MAX_RUNS_PER_ALLOC)
+					assert(!"[WARNING] GC could not free a block for this die [WARNING]");
+
+				GarbageCollection(dieNo);
+				currentBlock = virtualDieMapPtr->die[dieNo].currentBlock;
+
+				if(virtualBlockMapPtr->block[dieNo][currentBlock].currentPage < USER_PAGES_PER_BLOCK)
+					break;	// GC gave this die a new current block as a copy target
+
 				currentBlock = GetFromFbList(dieNo, GET_FREE_BLOCK_NORMAL);
 				if(currentBlock != BLOCK_FAIL)
+				{
 					virtualDieMapPtr->die[dieNo].currentBlock = currentBlock;
-				else
-					assert(!"[WARNING] There is no available block [WARNING]");
+					break;
+				}
 			}
-			else if(virtualBlockMapPtr->block[dieNo][currentBlock].currentPage > USER_PAGES_PER_BLOCK)
-				assert(!"[WARNING] Current page management fail [WARNING]");
 		}
 	}
 	else if(virtualBlockMapPtr->block[dieNo][currentBlock].currentPage > USER_PAGES_PER_BLOCK)
@@ -829,36 +837,39 @@ unsigned int FindFreeVirtualSlice()
 }
 
 
-unsigned int FindFreeVirtualSliceForGc(unsigned int copyTargetDieNo, unsigned int victimBlockNo)
+// GC copy target. Targets rotate over all dies like host writes, and each die has
+// its own temporary buffer (AllocateTempDataBuf), so the copies of one GC run are
+// programmed on all dies in parallel instead of one after another on the victim's
+// die. A die with no room left is skipped, so this never has to run GC itself.
+unsigned int FindFreeVirtualSliceForGc(unsigned int srcDieNo, unsigned int victimBlockNo)
 {
-	unsigned int currentBlock, virtualSliceAddr, dieNo;
+	static unsigned int gcTargetDie = 0;
+	unsigned int tries, dieNo, currentBlock, virtualSliceAddr;
 
-	dieNo = copyTargetDieNo;
-	if(victimBlockNo == virtualDieMapPtr->die[dieNo].currentBlock)
+	for(tries = 0; tries < USER_DIES; tries++)
 	{
-		virtualDieMapPtr->die[dieNo].currentBlock = GetFromFbList(dieNo, GET_FREE_BLOCK_GC);
-		if(virtualDieMapPtr->die[dieNo].currentBlock == BLOCK_FAIL)
-			assert(!"[WARNING] There is no available block [WARNING]");
-	}
-	currentBlock = virtualDieMapPtr->die[dieNo].currentBlock;
+		dieNo = gcTargetDie;
+		gcTargetDie = (gcTargetDie + 1) % USER_DIES;
+		currentBlock = virtualDieMapPtr->die[dieNo].currentBlock;
 
-	if(virtualBlockMapPtr->block[dieNo][currentBlock].currentPage == USER_PAGES_PER_BLOCK)
-	{
-
-		currentBlock = GetFromFbList(dieNo, GET_FREE_BLOCK_GC);
-
-		if(currentBlock != BLOCK_FAIL)
+		if(((dieNo == srcDieNo) && (currentBlock == victimBlockNo)) ||
+			(virtualBlockMapPtr->block[dieNo][currentBlock].currentPage == USER_PAGES_PER_BLOCK))
+		{
+			currentBlock = GetFromFbList(dieNo, GET_FREE_BLOCK_GC);
+			if(currentBlock == BLOCK_FAIL)
+				continue;
 			virtualDieMapPtr->die[dieNo].currentBlock = currentBlock;
-		else
-			assert(!"[WARNING] There is no available block [WARNING]");
+		}
+		else if(virtualBlockMapPtr->block[dieNo][currentBlock].currentPage > USER_PAGES_PER_BLOCK)
+			assert(!"[WARNING] Current page management fail [WARNING]");
+
+		virtualSliceAddr = Vorg2VsaTranslation(dieNo, currentBlock, virtualBlockMapPtr->block[dieNo][currentBlock].currentPage);
+		virtualBlockMapPtr->block[dieNo][currentBlock].currentPage++;
+		return virtualSliceAddr;
 	}
-	else if(virtualBlockMapPtr->block[dieNo][currentBlock].currentPage > USER_PAGES_PER_BLOCK)
-		assert(!"[WARNING] Current page management fail [WARNING]");
 
-
-	virtualSliceAddr = Vorg2VsaTranslation(dieNo, currentBlock, virtualBlockMapPtr->block[dieNo][currentBlock].currentPage);
-	virtualBlockMapPtr->block[dieNo][currentBlock].currentPage++;
-	return virtualSliceAddr;
+	assert(!"[WARNING] GC: no die has room for a copy [WARNING]");
+	return VSA_FAIL;
 }
 
 
@@ -898,6 +909,9 @@ void InvalidateOldVsa(unsigned int logicalSliceAddr)
 		// unlink
 		SelectiveGetFromGcVictimList(dieNo, blockNo);
 		virtualBlockMapPtr->block[dieNo][blockNo].invalidSliceCnt++;
+		// The page is invalid from now on: GC tells valid pages by their P2L entry
+		// alone, without looking the mapping up.
+		virtualSliceMapPtr->virtualSlice[virtualSliceAddr].logicalSliceAddr = LSA_NONE;
 		// (no need to clear the CMT/GTD entry to VSA_NONE here: the only
 		// caller, AddrTransWrite(), immediately overwrites it via
 		// DftlSetMapping() right after this returns)

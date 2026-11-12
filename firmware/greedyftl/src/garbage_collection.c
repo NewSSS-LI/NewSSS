@@ -70,10 +70,9 @@ void InitGcVictimMap()
 
 void GarbageCollection(unsigned int dieNo)
 {
-	unsigned int victimBlockNo, pageNo, virtualSliceAddr, logicalSliceAddr, dieNoForGcCopy, reqSlotTag;
+	unsigned int victimBlockNo, pageNo, virtualSliceAddr, logicalSliceAddr, reqSlotTag, copyVsa, bufEntry;
 
 	victimBlockNo = GetFromGcVictimList(dieNo);
-	dieNoForGcCopy = dieNo;
 
 	if(virtualBlockMapPtr->block[dieNo][victimBlockNo].invalidSliceCnt != SLICES_PER_BLOCK)
 	{
@@ -85,6 +84,11 @@ void GarbageCollection(unsigned int dieNo)
 			if(logicalSliceAddr != LSA_NONE)
 				if(logicalSliceMapPtr->logicalSlice[logicalSliceAddr].virtualSliceAddr ==  virtualSliceAddr) //valid data
 				{
+					// Copy target on any die; the buffer of the target die links the
+					// read and the write, so copies to different dies run in parallel.
+					copyVsa = FindFreeVirtualSliceForGc(dieNo, victimBlockNo);
+					bufEntry = AllocateTempDataBuf(Vsa2VdieTranslation(copyVsa));
+
 					//read
 					reqSlotTag = GetFromFreeReqQ();
 
@@ -97,7 +101,7 @@ void GarbageCollection(unsigned int dieNo)
 					reqPoolPtr->reqPool[reqSlotTag].reqOpt.nandEccWarning = REQ_OPT_NAND_ECC_WARNING_OFF;
 					reqPoolPtr->reqPool[reqSlotTag].reqOpt.rowAddrDependencyCheck = REQ_OPT_ROW_ADDR_DEPENDENCY_CHECK;
 					reqPoolPtr->reqPool[reqSlotTag].reqOpt.blockSpace = REQ_OPT_BLOCK_SPACE_MAIN;
-					reqPoolPtr->reqPool[reqSlotTag].dataBufInfo.entry = AllocateTempDataBuf(dieNo);
+					reqPoolPtr->reqPool[reqSlotTag].dataBufInfo.entry = bufEntry;
 					UpdateTempDataBufEntryInfoBlockingReq(reqPoolPtr->reqPool[reqSlotTag].dataBufInfo.entry, reqSlotTag);
 					reqPoolPtr->reqPool[reqSlotTag].nandInfo.virtualSliceAddr = virtualSliceAddr;
 
@@ -115,9 +119,9 @@ void GarbageCollection(unsigned int dieNo)
 					reqPoolPtr->reqPool[reqSlotTag].reqOpt.nandEccWarning = REQ_OPT_NAND_ECC_WARNING_OFF;
 					reqPoolPtr->reqPool[reqSlotTag].reqOpt.rowAddrDependencyCheck = REQ_OPT_ROW_ADDR_DEPENDENCY_CHECK;
 					reqPoolPtr->reqPool[reqSlotTag].reqOpt.blockSpace = REQ_OPT_BLOCK_SPACE_MAIN;
-					reqPoolPtr->reqPool[reqSlotTag].dataBufInfo.entry = AllocateTempDataBuf(dieNo);
+					reqPoolPtr->reqPool[reqSlotTag].dataBufInfo.entry = bufEntry;
 					UpdateTempDataBufEntryInfoBlockingReq(reqPoolPtr->reqPool[reqSlotTag].dataBufInfo.entry, reqSlotTag);
-					reqPoolPtr->reqPool[reqSlotTag].nandInfo.virtualSliceAddr = FindFreeVirtualSliceForGc(dieNoForGcCopy, victimBlockNo);
+					reqPoolPtr->reqPool[reqSlotTag].nandInfo.virtualSliceAddr = copyVsa;
 
 					logicalSliceMapPtr->logicalSlice[logicalSliceAddr].virtualSliceAddr = reqPoolPtr->reqPool[reqSlotTag].nandInfo.virtualSliceAddr;
 					virtualSliceMapPtr->virtualSlice[reqPoolPtr->reqPool[reqSlotTag].nandInfo.virtualSliceAddr].logicalSliceAddr = logicalSliceAddr;
@@ -128,6 +132,12 @@ void GarbageCollection(unsigned int dieNo)
 	}
 
 	EraseBlock(dieNo, victimBlockNo);
+
+	// The victim may have been this die's current block (copies then skip this die
+	// when it has no free block). It is in the free list now, so take the current
+	// block out of the list properly instead of writing into a listed block.
+	if(virtualDieMapPtr->die[dieNo].currentBlock == victimBlockNo)
+		virtualDieMapPtr->die[dieNo].currentBlock = GetFromFbList(dieNo, GET_FREE_BLOCK_GC);
 }
 
 

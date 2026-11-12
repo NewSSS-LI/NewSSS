@@ -48,6 +48,7 @@
 #include "xil_printf.h"
 #include <assert.h>
 #include "memory_map.h"
+#include "dftl_gtd.h"
 
 P_GC_VICTIM_MAP gcVictimMapPtr;
 
@@ -70,10 +71,12 @@ void InitGcVictimMap()
 
 void GarbageCollection(unsigned int dieNo)
 {
-	unsigned int victimBlockNo, pageNo, virtualSliceAddr, logicalSliceAddr, dieNoForGcCopy, reqSlotTag;
+	unsigned int victimBlockNo, pageNo, virtualSliceAddr, logicalSliceAddr, reqSlotTag, copyVsa, bufEntry;
+	static unsigned int movedLpn[USER_PAGES_PER_BLOCK], movedVsa[USER_PAGES_PER_BLOCK];
+	static unsigned int batchOffset[USER_PAGES_PER_BLOCK], batchVsa[USER_PAGES_PER_BLOCK];
+	unsigned int movedCnt = 0, i;
 
 	victimBlockNo = GetFromGcVictimList(dieNo);
-	dieNoForGcCopy = dieNo;
 
 	if(virtualBlockMapPtr->block[dieNo][victimBlockNo].invalidSliceCnt != SLICES_PER_BLOCK)
 	{
@@ -82,9 +85,15 @@ void GarbageCollection(unsigned int dieNo)
 			virtualSliceAddr = Vorg2VsaTranslation(dieNo, victimBlockNo, pageNo);
 			logicalSliceAddr = virtualSliceMapPtr->virtualSlice[virtualSliceAddr].logicalSliceAddr;
 
+			// InvalidateOldVsa clears the P2L entry of every overwritten page, so a set
+			// entry means valid data: no mapping lookup, no translation page read.
 			if(logicalSliceAddr != LSA_NONE)
-				if(DftlGetMapping(logicalSliceAddr) ==  virtualSliceAddr) //valid data, DFTL: CMT/GTD-backed lookup instead of logicalSliceMapPtr[]
 				{
+					// Copy target on any die; the buffer of the target die links the
+					// read and the write, so copies to different dies run in parallel.
+					copyVsa = FindFreeVirtualSliceForGc(dieNo, victimBlockNo);
+					bufEntry = AllocateTempDataBuf(Vsa2VdieTranslation(copyVsa));
+
 					//read
 					reqSlotTag = GetFromFreeReqQ();
 
@@ -97,7 +106,7 @@ void GarbageCollection(unsigned int dieNo)
 					reqPoolPtr->reqPool[reqSlotTag].reqOpt.nandEccWarning = REQ_OPT_NAND_ECC_WARNING_OFF;
 					reqPoolPtr->reqPool[reqSlotTag].reqOpt.rowAddrDependencyCheck = REQ_OPT_ROW_ADDR_DEPENDENCY_CHECK;
 					reqPoolPtr->reqPool[reqSlotTag].reqOpt.blockSpace = REQ_OPT_BLOCK_SPACE_MAIN;
-					reqPoolPtr->reqPool[reqSlotTag].dataBufInfo.entry = AllocateTempDataBuf(dieNo);
+					reqPoolPtr->reqPool[reqSlotTag].dataBufInfo.entry = bufEntry;
 					UpdateTempDataBufEntryInfoBlockingReq(reqPoolPtr->reqPool[reqSlotTag].dataBufInfo.entry, reqSlotTag);
 					reqPoolPtr->reqPool[reqSlotTag].nandInfo.virtualSliceAddr = virtualSliceAddr;
 
@@ -115,17 +124,20 @@ void GarbageCollection(unsigned int dieNo)
 					reqPoolPtr->reqPool[reqSlotTag].reqOpt.nandEccWarning = REQ_OPT_NAND_ECC_WARNING_OFF;
 					reqPoolPtr->reqPool[reqSlotTag].reqOpt.rowAddrDependencyCheck = REQ_OPT_ROW_ADDR_DEPENDENCY_CHECK;
 					reqPoolPtr->reqPool[reqSlotTag].reqOpt.blockSpace = REQ_OPT_BLOCK_SPACE_MAIN;
-					reqPoolPtr->reqPool[reqSlotTag].dataBufInfo.entry = AllocateTempDataBuf(dieNo);
+					reqPoolPtr->reqPool[reqSlotTag].dataBufInfo.entry = bufEntry;
 					UpdateTempDataBufEntryInfoBlockingReq(reqPoolPtr->reqPool[reqSlotTag].dataBufInfo.entry, reqSlotTag);
-					reqPoolPtr->reqPool[reqSlotTag].nandInfo.virtualSliceAddr = FindFreeVirtualSliceForGc(dieNoForGcCopy, victimBlockNo);
+					reqPoolPtr->reqPool[reqSlotTag].nandInfo.virtualSliceAddr = copyVsa;
 
-					// DFTL: lazy copying + batch update (paper Section 3.3) --
-					// just update the CMT entry (dirty); the translation
-					// page on flash is only rewritten when this entry is
-					// eventually evicted from the CMT, so multiple GC'd
-					// pages whose mappings share a translation page collapse
-					// into a single flash write instead of one each.
-					DftlSetMapping(logicalSliceAddr, reqPoolPtr->reqPool[reqSlotTag].nandInfo.virtualSliceAddr);
+					// DFTL batch update (paper Section 3.3): a cached mapping is updated in
+					// the CMT (dirty) and written back on eviction; an uncached one is
+					// collected and written with the other moved pages of its translation
+					// page at the end of this GC run, one read and one write per page.
+					if(!DftlCmtGcUpdate(logicalSliceAddr, copyVsa))
+					{
+						movedLpn[movedCnt] = logicalSliceAddr;
+						movedVsa[movedCnt] = copyVsa;
+						movedCnt++;
+					}
 					virtualSliceMapPtr->virtualSlice[reqPoolPtr->reqPool[reqSlotTag].nandInfo.virtualSliceAddr].logicalSliceAddr = logicalSliceAddr;
 
 					SelectLowLevelReqQ(reqSlotTag);
@@ -133,7 +145,32 @@ void GarbageCollection(unsigned int dieNo)
 		}
 	}
 
+	// One translation page read and write per translation page touched.
+	for(i = 0; i < movedCnt; i++)
+	{
+		unsigned int mvpn, n = 0, j;
+
+		if(movedLpn[i] == LSA_NONE)
+			continue;
+		mvpn = DftlLpn2Mvpn(movedLpn[i]);
+		for(j = i; j < movedCnt; j++)
+			if((movedLpn[j] != LSA_NONE) && (DftlLpn2Mvpn(movedLpn[j]) == mvpn))
+			{
+				batchOffset[n] = DftlLpn2Offset(movedLpn[j]);
+				batchVsa[n] = movedVsa[j];
+				n++;
+				movedLpn[j] = LSA_NONE;
+			}
+		DftlGtdUpdateMappings(mvpn, batchOffset, batchVsa, n);
+	}
+
 	EraseBlock(dieNo, victimBlockNo);
+
+	// The victim may have been this die's current block (copies then skip this die
+	// when it has no free block). It is in the free list now, so take the current
+	// block out of the list properly instead of writing into a listed block.
+	if(virtualDieMapPtr->die[dieNo].currentBlock == victimBlockNo)
+		virtualDieMapPtr->die[dieNo].currentBlock = GetFromFbList(dieNo, GET_FREE_BLOCK_GC);
 }
 
 

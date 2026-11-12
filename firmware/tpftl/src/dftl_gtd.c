@@ -277,6 +277,42 @@ void DftlGtdWritebackMapping(unsigned int lpn, unsigned int vsa)
 	dftlGtdPtr->entry[mvpn].mppn = newMppn;
 }
 
+// GC batch update (DFTL paper Section 3.3): the new VSAs of pages that one GC run
+// moved and whose mappings are not cached, all of translation page mvpn, written
+// with one read and one write. Dirty cached entries of the page go along as in
+// DftlGtdWritebackMapping.
+void DftlGtdUpdateMappings(unsigned int mvpn, const unsigned int *offset, const unsigned int *vsa, unsigned int count)
+{
+	unsigned int dieNo = DftlMvpn2Die(mvpn);
+	unsigned int oldMppn, newMppn;
+	unsigned int *buf = (unsigned int*) DFTL_TRANS_STAGING_BUF_ADDR;
+	unsigned int i;
+
+	// Allocate first: it may run translation GC, which uses the staging buffer.
+	newMppn = DftlAllocTransSlice(dieNo);
+	oldMppn = dftlGtdPtr->entry[mvpn].mppn;
+
+	if(oldMppn != DFTL_GTD_NONE)
+	{
+		ReadTransPage(oldMppn, DFTL_TRANS_STAGING_BUF_ADDR);
+		virtualBlockMapPtr->block[Vsa2VdieTranslation(oldMppn)][Vsa2VblockTranslation(oldMppn)].invalidSliceCnt++;
+	}
+	else
+	{
+		buf[0] = mvpn;
+		for(i = 1; i <= DFTL_MAPPINGS_PER_TRANS_PAGE; i++)
+			buf[i] = VSA_NONE;
+	}
+
+	for(i = 0; i < count; i++)
+		buf[1 + offset[i]] = vsa[i];
+
+	DftlCmtTakeDirtyOfTp(mvpn, buf);
+
+	WriteTransPage(newMppn, DFTL_TRANS_STAGING_BUF_ADDR);
+	dftlGtdPtr->entry[mvpn].mppn = newMppn;
+}
+
 void DftlGcTranslationBlock(unsigned int dieNo)
 {
 	unsigned int i, victimBlock, maxInvalid, pageNo, pageCnt, mvpn, vsaOfPage, newMppn;
