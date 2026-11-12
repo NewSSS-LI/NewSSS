@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Collects the results of fb_bench.sh, rdb_bench.sh and paper_fio.sh runs into one
-CSV, so the three boards' results can be put side by side.
+"""Collects the results of fb_bench.sh, rdb_bench.sh, paper_fio.sh and rdb_check.sh
+runs into one CSV, so the three boards' results can be put side by side.
 
 Usage: summarize.py <run dir> [<run dir> ...] > results.csv
-A run dir is one folder made by a script (…_fb, …_rdb or …_fio). Output columns:
+A run dir is one folder made by a script (…_fb, …_rdb, …_fio or …_rdbcheck). Output columns:
   ftl, board_id, run, benchmark, workload, metric, value, unit, run_dir
 Units: MB = 10^6 bytes (as in the LearnedFTL paper). db_bench prints "MB/s" in
 units of 2^20 bytes; the CSV converts it.
@@ -76,17 +76,30 @@ def rdb_rows(d):
                 yield b, 'throughput', float(m.group(6)) * 1048576 / 1e6, 'MB/s'
             break
 
+END = re.compile(r'END\s+db_bench verifychecksum rc=(\d+)')
+
+def rdbcheck_rows(d):
+    # verifychecksum passed = 1 if db_bench exited 0 (it exits 1 on a checksum
+    # mismatch). readseq operations must be 10,000,000; it is reported as is.
+    p = os.path.join(d, 'phases.log')
+    m = END.search(open(p, encoding='utf-8', errors='replace').read()) if os.path.exists(p) else None
+    if m:
+        yield 'verifychecksum', 'passed', int(m.group(1) == '0'), 'bool'
+    for row in rdb_rows(d):
+        if row[0] == 'readseq' and row[1] == 'operations':
+            yield row
+
 def main(dirs):
     w = csv.writer(sys.stdout)
     w.writerow(['ftl', 'board_id', 'run', 'benchmark', 'workload', 'metric', 'value', 'unit', 'run_dir'])
     for d in dirs:
         m = meta(d)
         run = m.get('run') or d.rstrip('/').rsplit('_', 1)[-1]
-        rows = {'fio': fio_rows, 'fb': fb_rows, 'rdb': rdb_rows}.get(run)
+        rows = {'fio': fio_rows, 'fb': fb_rows, 'rdb': rdb_rows, 'rdbcheck': rdbcheck_rows}.get(run)
         if rows is None:
             print(f'skipped {d}: unknown run type {run}', file=sys.stderr)
             continue
-        bench = {'fio': 'fio', 'fb': 'filebench', 'rdb': 'rocksdb'}[run]
+        bench = {'fio': 'fio', 'fb': 'filebench', 'rdb': 'rocksdb', 'rdbcheck': 'rocksdb_check'}[run]
         for workload, metric, value, unit in rows(d):
             w.writerow([m.get('ftl', ''), m.get('board_id', ''), run, bench, workload, metric,
                         f'{value:.4g}' if isinstance(value, float) else value, unit, os.path.basename(d.rstrip('/'))])

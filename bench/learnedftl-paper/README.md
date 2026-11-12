@@ -29,6 +29,7 @@ FTL 하나마다 `suite.sh`가 아래를 순서대로 한 번에 돌린다. 앞 
 | 1 | `paper_fio.sh` | 논문 IV-B FIO 절차. Filebench·RocksDB 전의 사전 조건(preconditioning)도 겸한다 | 6~9시간 |
 | 2 | `fb_bench.sh` | Filebench fileserver, webserver, varmail (논문 Table I), 각 600초 | 1~3시간 |
 | 3 | `rdb_bench.sh` | RocksDB db_bench fillseq → overwrite → readrandom → readseq (논문 IV-D) | 1~2시간 |
+| 4 | `rdb_check.sh` | 3이 남긴 DB 검사: `verifychecksum`(모든 블록의 체크섬) → readseq(키 1,000만 개를 끝까지 읽는지). 측정값은 없다 | 10~20분 |
 
 시간은 FTL에 따라 다르다. DFTL·TPFTL이 가장 오래 걸린다(랜덤 워밍업만 6시간 넘게).
 
@@ -62,6 +63,13 @@ FTL 하나마다 `suite.sh`가 아래를 순서대로 한 번에 돌린다. 앞 
 
 - 설정: db_bench v8.11.4, 1스레드, 키 1,000만 개(키 16B, 값 1,000B), 압축 없음, direct I/O(읽기와 flush·compaction 모두)
 - 실행: `mkfs.ext4` 1회 후 fillseq → overwrite → readrandom 600초 → readseq 600초
+
+**DB 검사 (`rdb_check.sh`, 3번 직후, 펌웨어를 다시 올리지 않음)**
+
+- SSD가 RocksDB가 쓴 데이터를 그대로 돌려주는지 확인한다. db_bench readseq는 읽기 오류가 나도 메시지 없이 일찍 끝나므로(반복자 오류를 확인하지 않음), 틀린 데이터가 readseq 처리 개수 부족으로만 보일 수 있다.
+- 3번과 같은 DB 옵션으로, 자동 compaction만 끄고 `verifychecksum` → `readseq`를 실행한다.
+- 실패해도 suite는 계속 끝까지 가지만, `.out`에 `RDB CHECK FAILED`가 남는다. 그 회차의 RocksDB 결과는 쓰지 말고 알린다.
+- **실패하면 펌웨어를 다시 올리지 말고 보드를 그대로 둔 채 알린다.** 펌웨어를 다시 올리면 SSD가 비어 DB가 사라지므로 원인을 확인할 수 없다.
 
 **공통**
 - Filebench와 db_bench는 메모리 2GB cgroup 안에서 돈다(`systemd-run -p MemoryMax=2G`). 페이지 캐시가 SSD 성능을 가리지 않게 하려는 것이다.
@@ -98,10 +106,10 @@ cp config.example.sh config.sh     # FTL, BOARD_ID 등을 채운다
    ```bash
    FW_SHA256=<올린 ELF의 sha256> setsid -f nohup ./suite.sh > ~/suite_$(date +%m%d_%H%M).out 2>&1 < /dev/null
    ```
-6. 끝나면 `.out` 마지막 줄이 `SUITE DONE`이다. 진행 상황은 결과 폴더의 `phases.log`에서 본다.
+6. 끝나면 `.out` 마지막 줄이 `SUITE DONE`이고, 그 앞 줄이 `RDB CHECK PASSED`인지 확인한다. 진행 상황은 결과 폴더의 `phases.log`에서 본다.
 7. 결과를 CSV로 정리한다.
    ```bash
-   ./summarize.py ~/newsss_results/<날짜>_<ftl>_<board>_fio ~/newsss_results/<…>_fb ~/newsss_results/<…>_rdb > <ftl>_<board>.csv
+   ./summarize.py ~/newsss_results/<날짜>_<ftl>_<board>_fio ~/newsss_results/<…>_fb ~/newsss_results/<…>_rdb ~/newsss_results/<…>_rdbcheck > <ftl>_<board>.csv
    ```
    CSV를 공유하면 FTL끼리 바로 합쳐 비교할 수 있다. 컬럼은 `ftl, board_id, run, benchmark, workload, metric, value, unit, run_dir`이다. MB는 10⁶ 바이트(논문과 같음)이고, db_bench의 MB/s(2²⁰ 바이트)는 변환해서 적는다.
 
@@ -109,7 +117,7 @@ cp config.example.sh config.sh     # FTL, BOARD_ID 등을 채운다
 
 ## 4. 결과 폴더
 
-`$RESULTS_DIR/<날짜>_<ftl>_<board>_{fio,fb,rdb}/`
+`$RESULTS_DIR/<날짜>_<ftl>_<board>_{fio,fb,rdb,rdbcheck}/`
 
 - `meta.txt`: FTL, 보드, ELF sha256, 레포 커밋, 커널, CPU, 메모리, 도구 버전
 - `phases.log`: 단계별 시작·끝 시각과 요약
@@ -125,7 +133,7 @@ cp config.example.sh config.sh     # FTL, BOARD_ID 등을 채운다
 ## 6. 알려진 점
 
 - **TRIM 없음:** 펌웨어가 TRIM을 처리하지 않는다. `mkfs` 뒤에도 SSD 안은 이전 단계 데이터가 유효한 상태로 남는다. 그래서 1 → 2 → 3 순서가 결과에 영향을 준다.
-- **readseq 처리 개수:** 2026-11 측정에서 FTL마다 readseq 처리 개수가 달랐다(1,000만 / 749만 / 90만). `operations` 값을 함께 보고, 1,000만이 아니면 따로 표시한다.
+- **readseq 처리 개수:** readseq는 키 1,000만 개를 끝까지 읽어야 한다. 4번 `rdb_check.sh`가 이것과 체크섬을 확인한다. CSV의 `rocksdb_check` 행에서 `verifychecksum passed`가 1이고 readseq `operations`가 10,000,000이어야 그 회차의 RocksDB 결과를 쓴다.
 - **반복 측정:** 논문은 3회 이상 평균이다. 시간이 되면 FTL마다 `suite.sh`를 반복하되, 매번 펌웨어를 새로 올린다.
 
 ## 7. Claude에게 맡길 때
@@ -142,6 +150,7 @@ cp config.example.sh config.sh     # FTL, BOARD_ID 등을 채운다
 > - 스크립트와 펌웨어의 조건(옵션, 순서, 시간, CMT 크기, 메모리 제한)을 바꾸지 마.
 > - 바꿔야 할 것 같으면 먼저 나에게 물어봐.
 > - 대상 확인(`check_board.sh`)이 실패하면 멈추고 알려줘.
+> - `.out`에 `RDB CHECK FAILED`가 나오면 펌웨어를 다시 올리지 말고 멈추고 알려줘.
 > - 펌웨어는 측정 직전에 새로 올려. 이전 측정에 이어서 돌리지 마.
-> - 단계(FIO, Filebench, RocksDB)가 끝날 때마다 결과를 요약해서 알려줘.
+> - 단계(FIO, Filebench, RocksDB, DB 검사)가 끝날 때마다 결과를 요약해서 알려줘.
 > - 끝나면 `summarize.py`로 CSV를 만들어 줘.
