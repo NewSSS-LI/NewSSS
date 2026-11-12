@@ -6,7 +6,8 @@
 # refuses to run otherwise, so a host disk is never written by mistake.
 
 HOST_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_DIR="$(cd "$HOST_DIR/../.." && pwd)"
+# The repo root, however deep this folder sits (bench/<experiment>/host).
+REPO_DIR="$(git -C "$HOST_DIR" rev-parse --show-toplevel 2>/dev/null)" || REPO_DIR="$(cd "$HOST_DIR/../../.." && pwd)"
 
 if [ ! -f "$HOST_DIR/config.sh" ]; then
 	echo "config.sh not found: copy $HOST_DIR/config.example.sh to config.sh and fill it in" >&2
