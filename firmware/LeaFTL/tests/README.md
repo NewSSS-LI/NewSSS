@@ -29,15 +29,15 @@ BSP-independent; tests and reference PPN maps are never linked into firmware.
 
 ```powershell
 New-Item -ItemType Directory -Force build | Out-Null
-cl /nologo /TC /std:c11 /W4 /WX /O2 /fp:strict /I ..\firmware\leaftl\src ..\firmware\leaftl\src\leaftl_crb.c test_leaftl_crb.c /Fo:build\ /Fe:build\test_leaftl_crb.exe
+cl /nologo /TC /std:c11 /W4 /WX /O2 /fp:strict /I ..\src ..\src\leaftl_crb.c test_leaftl_crb.c /Fo:build\ /Fe:build\test_leaftl_crb.exe
 if ($LASTEXITCODE -ne 0) { throw 'CRB build failed' }
 & .\build\test_leaftl_crb.exe
 if ($LASTEXITCODE -ne 0) { throw 'CRB tests failed' }
-cl /nologo /TC /std:c11 /W4 /WX /O2 /fp:strict /I ..\firmware\leaftl\src ..\firmware\leaftl\src\leaftl_crb.c ..\firmware\leaftl\src\leaftl_segment.c test_leaftl_segment.c /Fo:build\ /Fe:build\test_leaftl_segment.exe
+cl /nologo /TC /std:c11 /W4 /WX /O2 /fp:strict /I ..\src ..\src\leaftl_crb.c ..\src\leaftl_segment.c test_leaftl_segment.c /Fo:build\ /Fe:build\test_leaftl_segment.exe
 if ($LASTEXITCODE -ne 0) { throw 'Segment build failed' }
 & .\build\test_leaftl_segment.exe
 if ($LASTEXITCODE -ne 0) { throw 'Segment tests failed' }
-cl /nologo /TC /std:c11 /W4 /WX /O2 /fp:strict /I ..\firmware\leaftl\src ..\firmware\leaftl\src\leaftl_crb.c ..\firmware\leaftl\src\leaftl_segment.c ..\firmware\leaftl\src\leaftl_index.c test_leaftl_index.c /Fo:build\ /Fe:build\test_leaftl_index.exe
+cl /nologo /TC /std:c11 /W4 /WX /O2 /fp:strict /I ..\src ..\src\leaftl_crb.c ..\src\leaftl_segment.c ..\src\leaftl_index.c test_leaftl_index.c /Fo:build\ /Fe:build\test_leaftl_index.exe
 if ($LASTEXITCODE -ne 0) { throw 'Index build failed' }
 & .\build\test_leaftl_index.exe
 if ($LASTEXITCODE -ne 0) { throw 'Index tests failed' }
@@ -54,7 +54,7 @@ CRB/segment tests and the codec comparison were already completed.
 ## Independent binary16 conversion oracle (x64 Python >=3.9)
 
 ```powershell
-cl /nologo /TC /std:c11 /W4 /WX /O2 /fp:strict /LD ..\firmware\leaftl\src\leaftl_crb.c ..\firmware\leaftl\src\leaftl_segment.c /Fo:build\ /Fe:build\codec.dll /link /EXPORT:LeaFtlFloat16Encode /EXPORT:LeaFtlFloat16Decode
+cl /nologo /TC /std:c11 /W4 /WX /O2 /fp:strict /LD ..\src\leaftl_crb.c ..\src\leaftl_segment.c /Fo:build\ /Fe:build\codec.dll /link /EXPORT:LeaFtlFloat16Encode /EXPORT:LeaFtlFloat16Decode
 if ($LASTEXITCODE -ne 0) { throw 'Codec build failed' }
 python verify_float16.py build\codec.dll
 if ($LASTEXITCODE -ne 0) { throw 'Codec comparisons failed' }
@@ -65,8 +65,8 @@ GCC/Clang reproduction (not executed here):
 ```sh
 mkdir -p build
 cc -std=c99 -Wall -Wextra -Werror -O2 -fno-fast-math -ffp-contract=off \
-  -I ../firmware/leaftl/src ../firmware/leaftl/src/leaftl_crb.c \
-  ../firmware/leaftl/src/leaftl_segment.c ../firmware/leaftl/src/leaftl_index.c \
+  -I ../src ../src/leaftl_crb.c \
+  ../src/leaftl_segment.c ../src/leaftl_index.c \
   test_leaftl_index.c -lm -o build/test_leaftl_index
 ./build/test_leaftl_index
 ```
@@ -146,7 +146,7 @@ See [paper alignment and remaining differences](../docs/PAPER_ALIGNMENT.md).
 From Developer PowerShell in tests (bsp_stub is HOST-TEST ONLY):
 
 ```powershell
-cl /nologo /TC /std:c11 /W4 /WX /O2 /fp:strict /I bsp_stub /I ..\firmware\leaftl\src ..\firmware\leaftl\src\leaftl_crb.c ..\firmware\leaftl\src\leaftl_segment.c ..\firmware\leaftl\src\leaftl_index.c ..\firmware\leaftl\src\leaftl_mapping.c ..\firmware\leaftl\src\leaftl_memory.c test_leaftl_mapping_memory.c /Fo:build\ /Fe:build\mapping_memory.exe
+cl /nologo /TC /std:c11 /W4 /WX /O2 /fp:strict /I bsp_stub /I ..\src ..\src\leaftl_crb.c ..\src\leaftl_segment.c ..\src\leaftl_index.c ..\src\leaftl_mapping.c ..\src\leaftl_memory.c test_leaftl_mapping_memory.c /Fo:build\ /Fe:build\mapping_memory.exe
 if ($LASTEXITCODE -ne 0) { throw 'Build failed' }
 & .\build\mapping_memory.exe
 if ($LASTEXITCODE -ne 0) { throw 'Tests failed' }

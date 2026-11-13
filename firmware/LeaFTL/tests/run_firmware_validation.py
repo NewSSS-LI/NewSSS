@@ -13,7 +13,7 @@ opts = args.parse_args()
 if any(g not in range(17) for g in opts.gammas):
     args.error('gamma must be 0..16')
 project = Path(__file__).resolve().parents[1]
-src = project / 'firmware/leaftl/src'
+src = project / 'src'
 out = Path(tempfile.gettempdir()) / 'LeaFTL-host-validation'
 out.mkdir(exist_ok=True)
 programs = Path(os.environ.get('ProgramFiles(x86)', r'C:\Program Files (x86)'))
