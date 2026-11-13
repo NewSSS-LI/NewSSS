@@ -94,7 +94,7 @@ PC 테스트용 `tests/bsp_stub/xparameters.h`로 **가상의 8채널·16die** �
 앞으로 세부 단계 검증은 사용자 요청대로 변경 핵심·경계·실패 처리만 최소 실행하고,
 대규모 반복 검증은 13·17·19번 통합 시점에 수행한다.
 
-Current stored segment is exactly 8 bytes; index node is 20 bytes. See [SEGMENT_8BYTE.md](SEGMENT_8BYTE.md) for integer-intercept constraints and updated verification.
+Current stored segment is exactly 8 bytes; index node is 20 bytes. See [#2단계 - 8바이트 세그먼트 표현.md](%232%EB%8B%A8%EA%B3%84%20-%208%EB%B0%94%EC%9D%B4%ED%8A%B8%20%EC%84%B8%EA%B7%B8%EB%A8%BC%ED%8A%B8%20%ED%91%9C%ED%98%84.md) for integer-intercept constraints and updated verification.
 
 
 ### 7·8번 추가

@@ -6,12 +6,12 @@
 
 | 번호 | 구현 내용 | 주요 파일 | 현재 상태 | 작성한 보고서 |
 |---|---|---|---|---|
-| 1 | 그룹 크기·gamma·주소 및 자원 상한 정의 | `leaftl_config.h` | 구현·PC 확인 | [1번 기록](#step-1), [상세](LEAFTL_STEP1.md) |
-| 2 | 부동소수점 학습·예측·membership·8-byte 모델 | `leaftl_segment.c/h` | 구현·PC 검증 | [2번 기록](#step-2), [8-byte 수정](SEGMENT_8BYTE.md) |
+| 1 | 그룹 크기·gamma·주소 및 자원 상한 정의 | `leaftl_config.h` | 구현·PC 확인 | [1번 기록](#step-1), [상세](%231%EB%8B%A8%EA%B3%84%20-%20%EC%84%A4%EC%A0%95%EA%B3%BC%20%EC%A3%BC%EC%86%8C%20%EA%B3%84%EC%95%BD.md) |
+| 2 | 부동소수점 학습·예측·membership·8-byte 모델 | `leaftl_segment.c/h` | 구현·PC 검증 | [2번 기록](#step-2), [8-byte 수정](%232%EB%8B%A8%EA%B3%84%20-%208%EB%B0%94%EC%9D%B4%ED%8A%B8%20%EC%84%B8%EA%B7%B8%EB%A8%BC%ED%8A%B8%20%ED%91%9C%ED%98%84.md) |
 | 3 | 그룹별 다중 레벨 삽입·최신 매핑 조회 | `leaftl_index.c/h` | 구현·PC 검증 | [3번 기록](#step-3) |
-| 4 | 논문식 CRB·seg_merge·삽입 merge·compaction | `leaftl_crb.c/h`, `leaftl_index.c/h` | 구현·PC 검증 | [4번 기록](#step-4), [논문 반영표](PAPER_ALIGNMENT.md) |
-| 5 | 통합 매핑 API·pending·완료 후 발행 | `leaftl_mapping.c/h` | 구현·최소 검증 | [5번 기록](#step-5), [상세](MEMORY_LAYOUT.md) |
-| 6 | OpenSSD DRAM 배치·초기화·메모리 경계 | `leaftl_memory.c/h`, `memory_map.h`, `lscript.ld` | 구현·최소 검증 | [6번 기록](#step-6), [메모리 배치](MEMORY_LAYOUT.md) |
+| 4 | 논문식 CRB·seg_merge·삽입 merge·compaction | `leaftl_crb.c/h`, `leaftl_index.c/h` | 구현·PC 검증 | [4번 기록](#step-4), [논문 반영표](%234%EB%8B%A8%EA%B3%84%20-%20%EB%85%BC%EB%AC%B8%20%EB%8C%80%EC%A1%B0%20%EB%B0%8F%20%EB%B3%B4%EC%A0%95%20%EA%B2%B0%EA%B3%BC.md) |
+| 5 | 통합 매핑 API·pending·완료 후 발행 | `leaftl_mapping.c/h` | 구현·최소 검증 | [5번 기록](#step-5), [상세](%235-6%EB%8B%A8%EA%B3%84%20-%20%EB%A7%A4%ED%95%91%20%EC%9D%B8%ED%84%B0%ED%8E%98%EC%9D%B4%EC%8A%A4%EC%99%80%20DRAM%20%EB%B0%B0%EC%B9%98.md) |
+| 6 | OpenSSD DRAM 배치·초기화·메모리 경계 | `leaftl_memory.c/h`, `memory_map.h`, `lscript.ld` | 구현·최소 검증 | [6번 기록](#step-6), [메모리 배치](%235-6%EB%8B%A8%EA%B3%84%20-%20%EB%A7%A4%ED%95%91%20%EC%9D%B8%ED%84%B0%ED%8E%98%EC%9D%B4%EC%8A%A4%EC%99%80%20DRAM%20%EB%B0%B0%EC%B9%98.md) |
 | 7 | dirty 버퍼 수집·LPN 기준 ID 정렬 | `leaftl_writeback.c/h`, `data_buffer.c/h` | 구현·최소 검증 | [7·8번 공동 기록](#step-7-8) |
 | 8 | 정렬 후 연속 page 할당·실제 PPN 학습·쓰기 연결 | `leaftl_cosmos.c/h`, `address_translation.c`, `request_transform.c`, `request_allocation.c`, `ftl_config.c` | 핵심 경로 구현·기본 비활성 | [7·8번 공동 기록](#step-7-8) |
 | 9 | 읽기·쓰기 완료 및 오류 처리 보강 | `leaftl_cosmos.c/h`, `request_transform.c` | 구현·최소 PC 검증 | [9번 기록](#step-9) |
@@ -40,7 +40,7 @@
 Verification policy: minimal core/boundary/failure checks per implementation step; large repeated tests at stages 13, 17 and 19, per user instruction.
 
 현재 세그먼트는 8 bytes(SLPA 1 + L 1 + half K 2 + uint32 I 4)이다.
-이전 단계의 크기 수치는 당시 기록이며, 최신 내용은 SEGMENT_8BYTE.md와 추가 수정 절을 따른다.
+이전 단계의 크기 수치는 당시 기록이며, 최신 내용은 #2단계 - 8바이트 세그먼트 표현.md와 추가 수정 절을 따른다.
 
 <a id="step-1"></a>
 
@@ -53,7 +53,7 @@ Verification policy: minimal core/boundary/failure checks per implementation ste
 앞으로 구현할 log-structured 매핑 인덱스의 관리 단위와 공통 설정을 정의했다.
 
 - 생성: `firmware/leaftl/src/leaftl_config.h`
-- 생성: [LEAFTL_STEP1.md](LEAFTL_STEP1.md) — 주소 체계와 설정의 상세 근거
+- 생성: [#1단계 - 설정과 주소 계약.md](%231%EB%8B%A8%EA%B3%84%20-%20%EC%84%A4%EC%A0%95%EA%B3%BC%20%EC%A3%BC%EC%86%8C%20%EA%B3%84%EC%95%BD.md) — 주소 체계와 설정의 상세 근거
 - 기존 DFTL 소스와 실행 경로는 변경하지 않았다.
 
 ### 1. log-structured 인덱스의 그룹 크기 지정
@@ -191,7 +191,7 @@ Verification policy: minimal core/boundary/failure checks per implementation ste
 
 이번 보정은 이전 stride survivor 재분할·동일 계수 coalescing·그룹 전체 interval
 재배치 방식을 대체한다. 상세한 다섯 가지 반영표와 남은 차이는
-[PAPER_ALIGNMENT.md](PAPER_ALIGNMENT.md)에 기록했다.
+[#4단계 - 논문 대조 및 보정 결과.md](%234%EB%8B%A8%EA%B3%84%20-%20%EB%85%BC%EB%AC%B8%20%EB%8C%80%EC%A1%B0%20%EB%B0%8F%20%EB%B3%B4%EC%A0%95%20%EA%B2%B0%EA%B3%BC.md)에 기록했다.
 
 | 수정 항목 | 현재 구현 |
 |---|---|
@@ -278,7 +278,7 @@ Flash 저장·복구 및 gamma>0/OOB 연계 검증이 남는다.
   이번에 대규모 무작위 재검증은 수행하지 않았다.
 - SDK XML과 linker 경계 선언을 확인했다. 실제 ARM SDK 빌드·GNU 링크·보드 업로드는 미수행이다.
 
-파일·API·주소 표·한계와 재현 방법은 [MEMORY_LAYOUT.md](MEMORY_LAYOUT.md)와
+파일·API·주소 표·한계와 재현 방법은 [#5-6단계 - 매핑 인터페이스와 DRAM 배치.md](%235-6%EB%8B%A8%EA%B3%84%20-%20%EB%A7%A4%ED%95%91%20%EC%9D%B8%ED%84%B0%ED%8E%98%EC%9D%B4%EC%8A%A4%EC%99%80%20DRAM%20%EB%B0%B0%EC%B9%98.md)와
 `tests/README.md`에 기록했다. 생성 테스트는 `test_leaftl_mapping_memory.c`와 테스트 전용 BSP stub이다.
 5·6번은 구현했고, 기존 DFTL의 NAND/NVMe 실행 경로 호출 연결은 7번 이후 작업이다.
 
@@ -300,7 +300,7 @@ Flash 저장·복구 및 gamma>0/OOB 연계 검증이 남는다.
   Figure 13/CRB/계수 보존/실패 처리 38,912회 조회·7회 compaction 및 매핑·RAM 경계 검사 통과.
 - 대규모 무작위 재검증 없이 최소 검증만 진행했다. 실제 ARM SDK 빌드·보드 업로드는 미수행이다.
 
-상세한 필드 배치·uint32 I 선택의 한계·메모리 변화는 [SEGMENT_8BYTE.md](SEGMENT_8BYTE.md)에 기록했다.
+상세한 필드 배치·uint32 I 선택의 한계·메모리 변화는 [#2단계 - 8바이트 세그먼트 표현.md](%232%EB%8B%A8%EA%B3%84%20-%208%EB%B0%94%EC%9D%B4%ED%8A%B8%20%EC%84%B8%EA%B7%B8%EB%A8%BC%ED%8A%B8%20%ED%91%9C%ED%98%84.md)에 기록했다.
 이 수정은 앞선 기록의 16-byte model/32-byte node/46,392-byte workspace 수치를 대체한다.
 
 

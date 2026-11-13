@@ -139,7 +139,7 @@ actual 8-byte model plus separate index metadata. Workspace must be budgeted off
 at step 6. No board/SDK build was run. Future fixed-point arithmetic must
 repeat these exact membership/value/rounding/merge tests before use.
 
-See [paper alignment and remaining differences](../docs/PAPER_ALIGNMENT.md).
+See [paper alignment and remaining differences](../../../docs/LeaFTL/%234%EB%8B%A8%EA%B3%84%20-%20%EB%85%BC%EB%AC%B8%20%EB%8C%80%EC%A1%B0%20%EB%B0%8F%20%EB%B3%B4%EC%A0%95%20%EA%B2%B0%EA%B3%BC.md).
 
 ## Steps 5 and 6: minimal mapping/memory check
 
@@ -163,7 +163,7 @@ New arena: 3,007,936 bytes in the synthetic x64 configuration. The raw future
 directory reservation is not an implemented Flash format. Actual target
 sizes are checked by memory_map.h at SDK compilation. Linker ASSERT and SDK
 XML were inspected; an ARM SDK build/link was NOT run. Details: 
-[MEMORY_LAYOUT.md](../docs/MEMORY_LAYOUT.md).
+[#5-6단계 - 매핑 인터페이스와 DRAM 배치.md](../../../docs/LeaFTL/%235-6%EB%8B%A8%EA%B3%84%20-%20%EB%A7%A4%ED%95%91%20%EC%9D%B8%ED%84%B0%ED%8E%98%EC%9D%B4%EC%8A%A4%EC%99%80%20DRAM%20%EB%B0%B0%EC%B9%98.md).
 
 Future individual steps use minimal changed-path/boundary/failure checks.
 Large repeated/random tests are deferred to stages 13, 17 and 19.
@@ -181,4 +181,4 @@ loops remain available but were NOT rerun for this revision. Current executed
 checks: 9 segment batches x 256 offsets, 8-byte golden/roundtrip/bounds cases,
 index --targeted (38,912 lookups, 7 compactions), mapping/memory and 32-bit host
 compilation. ARM SDK build/board upload remain pending.
-See [SEGMENT_8BYTE.md](../docs/SEGMENT_8BYTE.md).
+See [#2단계 - 8바이트 세그먼트 표현.md](../../../docs/LeaFTL/%232%EB%8B%A8%EA%B3%84%20-%208%EB%B0%94%EC%9D%B4%ED%8A%B8%20%EC%84%B8%EA%B7%B8%EB%A8%BC%ED%8A%B8%20%ED%91%9C%ED%98%84.md).

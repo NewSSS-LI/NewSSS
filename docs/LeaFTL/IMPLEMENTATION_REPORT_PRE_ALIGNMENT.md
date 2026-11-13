@@ -1,6 +1,6 @@
 # Historical report before paper-alignment correction
 
-This is a superseded record. Current implementation: IMPLEMENTATION_REPORT.md and PAPER_ALIGNMENT.md.
+This is a superseded record. Current implementation: IMPLEMENTATION_REPORT.md and #4단계 - 논문 대조 및 보정 결과.md.
 
 # DFTL 기반 LeaFTL 구현 보고서
 
@@ -31,7 +31,7 @@ This is a superseded record. Current implementation: IMPLEMENTATION_REPORT.md an
 앞으로 구현할 log-structured 매핑 인덱스의 관리 단위와 공통 설정을 정의했다.
 
 - 생성: `firmware/leaftl/src/leaftl_config.h`
-- 생성: [LEAFTL_STEP1.md](LEAFTL_STEP1.md) — 주소 체계와 설정의 상세 근거
+- 생성: [#1단계 - 설정과 주소 계약.md](%231%EB%8B%A8%EA%B3%84%20-%20%EC%84%A4%EC%A0%95%EA%B3%BC%20%EC%A3%BC%EC%86%8C%20%EA%B3%84%EC%95%BD.md) — 주소 체계와 설정의 상세 근거
 - 기존 DFTL 소스와 실행 경로는 변경하지 않았다.
 
 ### 1. log-structured 인덱스의 그룹 크기 지정
@@ -135,7 +135,7 @@ This is a superseded record. Current implementation: IMPLEMENTATION_REPORT.md an
 - `firmware/leaftl/src/leaftl_segment.c`: 부동소수점 PLR, float16 변환, 소속 판정·예측
 - `tests/test_leaftl_segment.c`: 주소 정답 map 대조, 양자화·오류·경계 테스트
 - `tests/verify_float16.py`: 컴파일한 C 변환기를 Python binary16 변환과 독립 비교
-- [tests/README.md](../tests/README.md): 실행 방법과 연산 계약
+- [tests/README.md](../../firmware/LeaFTL/tests/README.md): 실행 방법과 연산 계약
 - 이 보고서: 기존 정수 분수 방식 설명을 현재 구현으로 갱신
 
 기존 DFTL 실행 경로와 `leaftl_config.h`는 변경하지 않았다.
@@ -282,7 +282,7 @@ merge·compaction, 펌웨어 연결, Flash 저장, GC, CRB·OOB는 후속 단계
 - 생성: `firmware/leaftl/src/leaftl_index.h` — 그룹·레벨·노드 및 API 계약
 - 생성: `firmware/leaftl/src/leaftl_index.c` — 초기화·삽입·조회·그룹 정보 조회
 - 생성: `tests/test_leaftl_index.c` — 버전·hole·자원 부족·무작위 갱신 통합 테스트
-- 갱신: [tests/README.md](../tests/README.md) — 3번 재실행 방법과 검증 범위
+- 갱신: [tests/README.md](../../firmware/LeaFTL/tests/README.md) — 3번 재실행 방법과 검증 범위
 - 갱신: 이 구현 보고서
 
 기존 `leaftl_config.h`, 부동소수점 `leaftl_segment.c/h`와 DFTL 실행 경로는
@@ -410,7 +410,7 @@ SDK 전체 빌드와 보드 업로드는 수행하지 않았다. 다음 4번은 
 - 수정: `firmware/leaftl/src/leaftl_index.c` — 실제 membership 차집합, 생존 구간 분할,
   호환 세그먼트 merge, 레벨 재배치와 node/level 반환
 - 수정: `tests/test_leaftl_index.c` — compaction 전후·오류·공간 재사용·무작위 갱신 검증
-- 수정: [tests/README.md](../tests/README.md) — 현재 동작·제약·테스트 실행 방법
+- 수정: [tests/README.md](../../firmware/LeaFTL/tests/README.md) — 현재 동작·제약·테스트 실행 방법
 - 수정: 이 구현 보고서
 
 2번 부동소수점·float16 모델과 1번 설정은 그대로 사용한다.

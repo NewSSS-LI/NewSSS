@@ -16,13 +16,22 @@ DFTL을 기반으로 LeaFTL의 학습 매핑을 구현한 **Cosmos+ OpenSSD용 C
 ## 폴더 구조
 
 ```text
-LeaFTL/
-├── .project
-├── .cproject
-├── src/                 # 펌웨어와 링크 스크립트
-├── docs/                # 구현 단계·메모리·보드 검증 기록
-├── tests/               # PC 테스트와 모의 NAND/DMA 통합 검증
-└── README.md
+NewSSS/
+├── firmware/
+│   └── LeaFTL/
+│       ├── .project
+│       ├── .cproject
+│       ├── src/
+│       ├── tests/
+│       └── README.md
+└── docs/
+    └── LeaFTL/
+        ├── IMPLEMENTATION_REPORT.md
+        ├── PORTING_PLAN.md
+        ├── #1단계 - 설정과 주소 계약.md
+        ├── #2단계 - 8바이트 세그먼트 표현.md
+        ├── #4단계 - 논문 대조 및 보정 결과.md
+        └── #5-6단계 - 매핑 인터페이스와 DRAM 배치.md
 ```
 
 ## 빌드·실행
@@ -47,7 +56,7 @@ python tests/run_firmware_validation.py --gammas 4
 - OOB 보정 경로 41회, 매핑 Flash read 0→324회 / program 4→14회 확인; 해당 실험 I/O·sync 실패 0회
 - 4GiB 자동 GC 실험: 유효 페이지 20,480개(320MiB) 복사, erase 160회, I/O·sync 실패 0회 확인. erase 통계는 메타데이터 erase도 포함한다.
 
-통계에는 내부 매핑 확인용 I/O도 포함되므로 그대로 host 오예측률이나 성능 비교값으로 사용하지 않는다. 상세 조건·확인 범위는 [구현 보고서](docs/IMPLEMENTATION_REPORT.md) 후반의 보드 실험 기록을 따른다.
+통계에는 내부 매핑 확인용 I/O도 포함되므로 그대로 host 오예측률이나 성능 비교값으로 사용하지 않는다. 상세 조건·확인 범위는 [구현 보고서](../../docs/LeaFTL/IMPLEMENTATION_REPORT.md) 후반의 보드 실험 기록을 따른다.
 
 ## 현재 한계
 
@@ -57,8 +66,8 @@ python tests/run_firmware_validation.py --gammas 4
 
 ## 문서·참고 자료
 
-- [구현 순서·보고서·보드 검증 결과](docs/IMPLEMENTATION_REPORT.md)
-- [메모리 배치](docs/MEMORY_LAYOUT.md), [8-byte segment 형식](docs/SEGMENT_8BYTE.md), [논문 반영 기록](docs/PAPER_ALIGNMENT.md)
+- [구현 순서·보고서·보드 검증 결과](../../docs/LeaFTL/IMPLEMENTATION_REPORT.md)
+- [메모리 배치](../../docs/LeaFTL/%235-6%EB%8B%A8%EA%B3%84%20-%20%EB%A7%A4%ED%95%91%20%EC%9D%B8%ED%84%B0%ED%8E%98%EC%9D%B4%EC%8A%A4%EC%99%80%20DRAM%20%EB%B0%B0%EC%B9%98.md), [8-byte segment 형식](../../docs/LeaFTL/%232%EB%8B%A8%EA%B3%84%20-%208%EB%B0%94%EC%9D%B4%ED%8A%B8%20%EC%84%B8%EA%B7%B8%EB%A8%BC%ED%8A%B8%20%ED%91%9C%ED%98%84.md), [논문 반영 기록](../../docs/LeaFTL/%234%EB%8B%A8%EA%B3%84%20-%20%EB%85%BC%EB%AC%B8%20%EB%8C%80%EC%A1%B0%20%EB%B0%8F%20%EB%B3%B4%EC%A0%95%20%EA%B2%B0%EA%B3%BC.md)
 - 초기 준비 문서와 단계별 기록의 “미구현/미검증” 표현은 해당 기록 시점의 상태다. 현재 상태는 이 README와 구현 보고서 후반의 최신 기록을 기준으로 확인한다.
 - LeaFTL 논문: *LeaFTL: A Learning-based Flash Translation Layer for Solid-State Drives*, ASPLOS 2023
 - [LeaFTL 공개 구현](https://github.com/platformxlab/LeaFTL), [기반 DFTL](https://github.com/NewSSS-LI/NewSSS/tree/main/firmware/dftl)
