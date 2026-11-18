@@ -52,7 +52,7 @@ FIO가 끝나고 2초가 지나면 UART에 통계가 출력됩니다.
 
 문제가 없으면 `LFTL_SHADOW_CHECK`를 `0`으로 되돌리고 다시 빌드한 뒤 성능을 측정하세요. Shadow 검사가 켜져 있으면 측정값이 왜곡됩니다.
 
-## Translation page 공간과 GC 시작 조건 (2026-11-17)
+## Translation line 확보 방식과 GC 시작 조건 (2026-11-17)
 
 논문에는 translation page를 어디에 얼마나 두는지와 GC 시작 수치가 없어서 [LearnedFTL 저자 레포](https://github.com/astlxmu/LearnedFTL)([`ld-tpftl.c`](https://github.com/astlxmu/LearnedFTL/blob/main/hw/femu/bbssd/ld-tpftl.c))에 맞췄습니다.
 
