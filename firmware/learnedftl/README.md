@@ -52,6 +52,15 @@ FIO가 끝나고 2초가 지나면 UART에 통계가 출력됩니다.
 
 문제가 없으면 `LFTL_SHADOW_CHECK`를 `0`으로 되돌리고 다시 빌드한 뒤 성능을 측정하세요. Shadow 검사가 켜져 있으면 측정값이 왜곡됩니다.
 
+## Translation page 공간과 GC 시작 조건 (2026-11-17)
+
+논문에는 translation page를 어디에 얼마나 두는지와 GC 시작 수치가 없어서 [LearnedFTL 저자 레포](https://github.com/astlxmu/LearnedFTL)([`ld-tpftl.c`](https://github.com/astlxmu/LearnedFTL/blob/main/hw/femu/bbssd/ld-tpftl.c))에 맞췄습니다.
+
+- **Translation page:** translation line을 미리 예약하지 않습니다(예전에는 3개 고정). translation page의 현재 line을 data와 같은 free line list에서 필요할 때 가져옵니다(레포의 `trans_wp`). translation GC는 모든 translation line의 live translation page를 새 line 하나로 옮기고 옛 line을 free list에 돌려줍니다(레포의 `batch_gtd_do_gc`).
+- **GC 시작:** 새 line이 필요할 때 free line이 3개 미만(`LFTL_GC_FREE_LINE_THRESHOLD`, 레포 `free_line_threshold`)이면 GC를 먼저 합니다. 쓰는 그룹이 line을 5개 이상(`LFTL_GC_LINE_THRESHOLD`, 레포 `gc_threshold`) 가졌으면 그 그룹, 아니면 translation line이 5개 이상이면 translation GC, 아니면 reclaim량이 가장 큰 그룹을 GC합니다(레포 `should_do_gc_v3`). free line이 3개 이상이면 그룹은 line을 몇 개든 가질 수 있습니다.
+- **레포와 다른 점:** translation page 할당(`TpAllocSlice`)은 그룹 GC 안에서도 불리므로 translation GC만 합니다(재귀 방지). free line이 적을 때 translation line이 2개 이상이면 모읍니다. translation line은 32개(`LFTL_TP_MAX_LINES`, bookkeeping 한도)가 되면 free line이 많아도 모읍니다.
+- **확인:** PC 시뮬레이터(256 line, 2048 line) 통과. 보드에서 32GB를 채운 뒤 16KB random write 6GB를 fio verify로 확인해 오류 0(gcGroups 1,086, modelRejected 0).
+
 ## 측정 권장안
 
 기존 조건(`bs=128k`, 2GB)은 요청 하나가 8개 슬라이스라 모델 효과가 잘 드러나지 않습니다. 논문의 효과를 보려면 작은 블록과 넓은 범위가 필요합니다.
