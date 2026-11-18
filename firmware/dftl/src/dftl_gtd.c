@@ -74,57 +74,31 @@ static void WriteTransPage(unsigned int vsa, unsigned int bufAddr)
 	WaitForRequest(reqSlotTag);
 }
 
-static void DftlPutToTransFbList(unsigned int dieNo, unsigned int blockNo)
+// A block from the die's normal free list becomes the translation current block.
+static void DftlOpenTransBlock(unsigned int dieNo)
 {
 	P_DFTL_TRANS_DIE_ENTRY die = &dftlTransDieMapPtr->die[dieNo];
+	unsigned int blockNo;
 
-	if(die->tailFreeBlock != BLOCK_NONE)
-	{
-		virtualBlockMapPtr->block[dieNo][blockNo].prevBlock = die->tailFreeBlock;
-		virtualBlockMapPtr->block[dieNo][blockNo].nextBlock = BLOCK_NONE;
-		virtualBlockMapPtr->block[dieNo][die->tailFreeBlock].nextBlock = blockNo;
-		die->tailFreeBlock = blockNo;
-	}
-	else
-	{
-		virtualBlockMapPtr->block[dieNo][blockNo].prevBlock = BLOCK_NONE;
-		virtualBlockMapPtr->block[dieNo][blockNo].nextBlock = BLOCK_NONE;
-		die->headFreeBlock = blockNo;
-		die->tailFreeBlock = blockNo;
-	}
-	die->freeBlockCnt++;
+	if(die->blockCnt == DFTL_TRANS_MAX_BLOCKS_PER_DIE)
+		assert(!"[WARNING] DFTL: too many translation blocks on a die [WARNING]");
+
+	blockNo = GetFromFbList(dieNo, GET_FREE_BLOCK_GC);
+	if(blockNo == BLOCK_FAIL)
+		assert(!"[WARNING] DFTL: no free block for translation pages [WARNING]");
+
+	die->blockList[die->blockCnt++] = blockNo;
+	die->currentBlock = blockNo;
 }
 
-static unsigned int DftlGetFromTransFbList(unsigned int dieNo)
+unsigned int DftlTransBlockCount(unsigned int dieNo)
 {
-	P_DFTL_TRANS_DIE_ENTRY die = &dftlTransDieMapPtr->die[dieNo];
-	unsigned int evictedBlockNo = die->headFreeBlock;
-
-	if(evictedBlockNo == BLOCK_NONE)
-		return BLOCK_FAIL;
-
-	if(virtualBlockMapPtr->block[dieNo][evictedBlockNo].nextBlock != BLOCK_NONE)
-	{
-		die->headFreeBlock = virtualBlockMapPtr->block[dieNo][evictedBlockNo].nextBlock;
-		virtualBlockMapPtr->block[dieNo][die->headFreeBlock].prevBlock = BLOCK_NONE;
-	}
-	else
-	{
-		die->headFreeBlock = BLOCK_NONE;
-		die->tailFreeBlock = BLOCK_NONE;
-	}
-
-	virtualBlockMapPtr->block[dieNo][evictedBlockNo].free = 0;
-	virtualBlockMapPtr->block[dieNo][evictedBlockNo].nextBlock = BLOCK_NONE;
-	virtualBlockMapPtr->block[dieNo][evictedBlockNo].prevBlock = BLOCK_NONE;
-	die->freeBlockCnt--;
-
-	return evictedBlockNo;
+	return dftlTransDieMapPtr->die[dieNo].blockCnt;
 }
 
 static void DftlEraseTransBlock(unsigned int dieNo, unsigned int blockNo)
 {
-	unsigned int reqSlotTag = GetFromFreeReqQ();
+	unsigned int pageNo, reqSlotTag = GetFromFreeReqQ();
 
 	reqPoolPtr->reqPool[reqSlotTag].reqType = REQ_TYPE_NAND;
 	reqPoolPtr->reqPool[reqSlotTag].reqCode = REQ_CODE_ERASE;
@@ -138,31 +112,21 @@ static void DftlEraseTransBlock(unsigned int dieNo, unsigned int blockNo)
 	SelectLowLevelReqQ(reqSlotTag);
 	WaitForRequest(reqSlotTag);
 
+	// Same state as a data block after EraseBlock, then back to the common pool.
 	virtualBlockMapPtr->block[dieNo][blockNo].free = 1;
 	virtualBlockMapPtr->block[dieNo][blockNo].eraseCnt++;
 	virtualBlockMapPtr->block[dieNo][blockNo].invalidSliceCnt = 0;
 	virtualBlockMapPtr->block[dieNo][blockNo].currentPage = 0;
+	for(pageNo = 0; pageNo < USER_PAGES_PER_BLOCK; pageNo++)
+		virtualSliceMapPtr->virtualSlice[Vorg2VsaTranslation(dieNo, blockNo, pageNo)].logicalSliceAddr = LSA_NONE;
 
-	DftlPutToTransFbList(dieNo, blockNo);
+	PutToFbList(dieNo, blockNo);
 }
 
-// One free translation block is always kept for GC. When taking a new current
-// block leaves none free, GC runs right away: its copies go into the new, empty
-// current block, so GC never needs a block itself (no recursion). A victim holds
-// at most DFTL_NUM_TRANS_PAGES / USER_DIES valid pages, far fewer than a block.
-static unsigned int DftlAllocTransSlice(unsigned int dieNo)
+static unsigned int DftlTakeTransSlice(unsigned int dieNo)
 {
 	P_DFTL_TRANS_DIE_ENTRY die = &dftlTransDieMapPtr->die[dieNo];
 	unsigned int vsa;
-
-	if(virtualBlockMapPtr->block[dieNo][die->currentBlock].currentPage == USER_PAGES_PER_BLOCK)
-	{
-		die->currentBlock = DftlGetFromTransFbList(dieNo);
-		if(die->currentBlock == BLOCK_FAIL)
-			assert(!"[WARNING] DFTL: no free translation block available [WARNING]");
-		if(die->freeBlockCnt == 0)
-			DftlGcTranslationBlock(dieNo);
-	}
 
 	vsa = Vorg2VsaTranslation(dieNo, die->currentBlock, virtualBlockMapPtr->block[dieNo][die->currentBlock].currentPage);
 	virtualBlockMapPtr->block[dieNo][die->currentBlock].currentPage++;
@@ -170,9 +134,29 @@ static unsigned int DftlAllocTransSlice(unsigned int dieNo)
 	return vsa;
 }
 
+// Runs translation GC only (never data GC), so it is safe inside data GC's batch
+// update. Below the free superblock watermark the die's translation blocks are
+// collected when there are at least two (the GC frees all but one); with
+// enough free blocks they are only collected at the bookkeeping bound.
+static unsigned int DftlAllocTransSlice(unsigned int dieNo)
+{
+	P_DFTL_TRANS_DIE_ENTRY die = &dftlTransDieMapPtr->die[dieNo];
+
+	if(virtualBlockMapPtr->block[dieNo][die->currentBlock].currentPage == USER_PAGES_PER_BLOCK)
+	{
+		if(((FreeSuperblockCount() <= GC_FREE_SUPERBLOCK_WATERMARK) && (die->blockCnt >= 2)) ||
+			(die->blockCnt == DFTL_TRANS_MAX_BLOCKS_PER_DIE))
+			DftlGcTranslationBlock(dieNo);
+		if(virtualBlockMapPtr->block[dieNo][die->currentBlock].currentPage == USER_PAGES_PER_BLOCK)
+			DftlOpenTransBlock(dieNo);
+	}
+
+	return DftlTakeTransSlice(dieNo);
+}
+
 void DftlGtdInit(void)
 {
-	unsigned int mvpn, dieNo, i, blockNo;
+	unsigned int mvpn, dieNo;
 
 	dftlGtdPtr = (P_DFTL_GTD) DFTL_GTD_ADDR;
 	dftlTransDieMapPtr = (P_DFTL_TRANS_DIE_MAP) DFTL_TRANS_DIE_MAP_ADDR;
@@ -180,28 +164,12 @@ void DftlGtdInit(void)
 	for(mvpn = 0; mvpn < DFTL_NUM_TRANS_PAGES; mvpn++)
 		dftlGtdPtr->entry[mvpn].mppn = DFTL_GTD_NONE;
 
+	// Each die starts with one translation block from its free list; more are
+	// taken when needed (DftlAllocTransSlice).
 	for(dieNo = 0; dieNo < USER_DIES; dieNo++)
 	{
-		dftlTransDieMapPtr->die[dieNo].headFreeBlock = BLOCK_NONE;
-		dftlTransDieMapPtr->die[dieNo].tailFreeBlock = BLOCK_NONE;
-		dftlTransDieMapPtr->die[dieNo].freeBlockCnt = 0;
-
-		// carve DFTL_TRANS_BLOCKS_PER_DIE blocks out of the (already fully
-		// populated, per InitBlockDieMap()) per-die data free list and
-		// dedicate them to translation-page storage.
-		for(i = 0; i < DFTL_TRANS_BLOCKS_PER_DIE; i++)
-		{
-			blockNo = GetFromFbList(dieNo, GET_FREE_BLOCK_GC);
-			if(blockNo == BLOCK_FAIL)
-				assert(!"[WARNING] DFTL: not enough free blocks to reserve translation pool [WARNING]");
-
-			dftlTransDieMapPtr->die[dieNo].blockList[i] = blockNo;
-			DftlPutToTransFbList(dieNo, blockNo);
-		}
-
-		dftlTransDieMapPtr->die[dieNo].currentBlock = DftlGetFromTransFbList(dieNo);
-		if(dftlTransDieMapPtr->die[dieNo].currentBlock == BLOCK_FAIL)
-			assert(!"[WARNING] DFTL: translation block pool init failed [WARNING]");
+		dftlTransDieMapPtr->die[dieNo].blockCnt = 0;
+		DftlOpenTransBlock(dieNo);
 	}
 }
 
@@ -311,48 +279,42 @@ void DftlGtdUpdateMappings(unsigned int mvpn, const unsigned int *offset, const 
 	dftlGtdPtr->entry[mvpn].mppn = newMppn;
 }
 
+// The live pages are found through the GTD (every translation page of this die
+// is mvpn % USER_DIES == dieNo), so dead pages are not read. They fit in the new
+// block: a die holds DFTL_NUM_TRANS_PAGES / USER_DIES of them at most.
 void DftlGcTranslationBlock(unsigned int dieNo)
 {
-	unsigned int i, victimBlock, maxInvalid, pageNo, pageCnt, mvpn, vsaOfPage, newMppn;
-	unsigned int *buf = (unsigned int*) DFTL_TRANS_STAGING_BUF_ADDR;
+	P_DFTL_TRANS_DIE_ENTRY die = &dftlTransDieMapPtr->die[dieNo];
+	unsigned int oldBlock[DFTL_TRANS_MAX_BLOCKS_PER_DIE];
+	unsigned int i, mvpn, mppn, oldCnt = die->blockCnt, newMppn;
 
-	victimBlock = BLOCK_NONE;
-	maxInvalid = 0;
+	for(i = 0; i < oldCnt; i++)
+		oldBlock[i] = die->blockList[i];
+	die->blockCnt = 0;
+	DftlOpenTransBlock(dieNo);
 
-	for(i = 0; i < DFTL_TRANS_BLOCKS_PER_DIE; i++)
+	for(mvpn = dieNo; mvpn < DFTL_NUM_TRANS_PAGES; mvpn += USER_DIES)
 	{
-		unsigned int b = dftlTransDieMapPtr->die[dieNo].blockList[i];
+		mppn = dftlGtdPtr->entry[mvpn].mppn;
+		if(mppn == DFTL_GTD_NONE)
+			continue;
+		if(Vsa2VdieTranslation(mppn) != dieNo)
+			assert(!"[WARNING] DFTL: translation page on the wrong die [WARNING]");
 
-		if(b == dftlTransDieMapPtr->die[dieNo].currentBlock)
-			continue;
-		if(virtualBlockMapPtr->block[dieNo][b].free)
-			continue;
-		if(virtualBlockMapPtr->block[dieNo][b].invalidSliceCnt >= maxInvalid)
-		{
-			maxInvalid = virtualBlockMapPtr->block[dieNo][b].invalidSliceCnt;
-			victimBlock = b;
-		}
+		for(i = 0; i < oldCnt; i++)
+			if(Vsa2VblockTranslation(mppn) == oldBlock[i])
+				break;
+		if(i == oldCnt)
+			continue;	// already in the new block
+
+		if(virtualBlockMapPtr->block[dieNo][die->currentBlock].currentPage == USER_PAGES_PER_BLOCK)
+			assert(!"[WARNING] DFTL: live translation pages exceed one block [WARNING]");
+		ReadTransPage(mppn, DFTL_TRANS_STAGING_BUF_ADDR);
+		newMppn = DftlTakeTransSlice(dieNo);
+		WriteTransPage(newMppn, DFTL_TRANS_STAGING_BUF_ADDR);
+		dftlGtdPtr->entry[mvpn].mppn = newMppn;
 	}
 
-	if(victimBlock == BLOCK_NONE)
-		assert(!"[WARNING] DFTL: translation block GC found no reclaimable victim [WARNING]");
-
-	pageCnt = virtualBlockMapPtr->block[dieNo][victimBlock].currentPage;
-	for(pageNo = 0; pageNo < pageCnt; pageNo++)
-	{
-		vsaOfPage = Vorg2VsaTranslation(dieNo, victimBlock, pageNo);
-		ReadTransPage(vsaOfPage, DFTL_TRANS_STAGING_BUF_ADDR);
-		mvpn = buf[0];
-
-		// still the live copy for this mvpn? (GTD may already point
-		// elsewhere if it was overwritten again after this copy was made)
-		if(mvpn < DFTL_NUM_TRANS_PAGES && dftlGtdPtr->entry[mvpn].mppn == vsaOfPage)
-		{
-			newMppn = DftlAllocTransSlice(dieNo);
-			WriteTransPage(newMppn, DFTL_TRANS_STAGING_BUF_ADDR);
-			dftlGtdPtr->entry[mvpn].mppn = newMppn;
-		}
-	}
-
-	DftlEraseTransBlock(dieNo, victimBlock);
+	for(i = 0; i < oldCnt; i++)
+		DftlEraseTransBlock(dieNo, oldBlock[i]);
 }

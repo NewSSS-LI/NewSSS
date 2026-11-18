@@ -787,6 +787,21 @@ unsigned int AddrTransWrite(unsigned int logicalSliceAddr)
 }
 
 
+// Free superblocks = free blocks every die still has = the smallest free block
+// count over the dies.
+unsigned int FreeSuperblockCount()
+{
+	unsigned int dieNo, cnt, minCnt = 0xffffffff;
+
+	for(dieNo = 0; dieNo < USER_DIES; dieNo++)
+	{
+		cnt = virtualDieMapPtr->die[dieNo].freeBlockCnt;
+		if(cnt < minCnt)
+			minCnt = cnt;
+	}
+	return minCnt;
+}
+
 unsigned int FindFreeVirtualSlice()
 {
 	unsigned int currentBlock, virtualSliceAddr, dieNo, gcRuns;
@@ -796,33 +811,38 @@ unsigned int FindFreeVirtualSlice()
 
 	if(virtualBlockMapPtr->block[dieNo][currentBlock].currentPage == USER_PAGES_PER_BLOCK)
 	{
-		currentBlock = GetFromFbList(dieNo, GET_FREE_BLOCK_NORMAL);
-
-		if(currentBlock != BLOCK_FAIL)
-			virtualDieMapPtr->die[dieNo].currentBlock = currentBlock;
-		else
+		// Superblock GC (trigger of the LearnedFTL authors' repo): while fewer than
+		// GC_FREE_SUPERBLOCK_WATERMARK + 1 superblocks are free, collect the
+		// translation blocks of dies holding DFTL_TRANS_GC_BLOCK_THRESHOLD of them,
+		// then one data victim on every die. GC copies go to every die
+		// (FindFreeVirtualSliceForGc), so the dies copy in parallel.
+		for(gcRuns = 0; FreeSuperblockCount() <= GC_FREE_SUPERBLOCK_WATERMARK; gcRuns++)
 		{
-			// GC copies go to every die (FindFreeVirtualSliceForGc), so one run frees
-			// this die's victim block but may leave its free list at the reserve.
-			// Collect again until this die has room.
-			for(gcRuns = 0; ; gcRuns++)
-			{
-				if(gcRuns == GC_MAX_RUNS_PER_ALLOC)
-					assert(!"[WARNING] GC could not free a block for this die [WARNING]");
+			unsigned int gcDie, collected = 0;
 
-				GarbageCollection(dieNo);
-				currentBlock = virtualDieMapPtr->die[dieNo].currentBlock;
+			if(gcRuns == GC_MAX_RUNS_PER_ALLOC)
+				assert(!"[WARNING] Superblock GC could not free enough blocks [WARNING]");
 
-				if(virtualBlockMapPtr->block[dieNo][currentBlock].currentPage < USER_PAGES_PER_BLOCK)
-					break;	// GC gave this die a new current block as a copy target
-
-				currentBlock = GetFromFbList(dieNo, GET_FREE_BLOCK_NORMAL);
-				if(currentBlock != BLOCK_FAIL)
+			for(gcDie = 0; gcDie < USER_DIES; gcDie++)
+				if(DftlTransBlockCount(gcDie) >= DFTL_TRANS_GC_BLOCK_THRESHOLD)
 				{
-					virtualDieMapPtr->die[dieNo].currentBlock = currentBlock;
-					break;
+					DftlGcTranslationBlock(gcDie);
+					collected++;
 				}
-			}
+			for(gcDie = 0; gcDie < USER_DIES; gcDie++)
+				collected += GarbageCollection(gcDie);
+			if(collected == 0)
+				break;	// nothing left to collect
+		}
+
+		// GC may have given this die a new current block (as a copy target).
+		currentBlock = virtualDieMapPtr->die[dieNo].currentBlock;
+		if(virtualBlockMapPtr->block[dieNo][currentBlock].currentPage == USER_PAGES_PER_BLOCK)
+		{
+			currentBlock = GetFromFbList(dieNo, GET_FREE_BLOCK_NORMAL);
+			if(currentBlock == BLOCK_FAIL)
+				assert(!"[WARNING] There is no available block [WARNING]");
+			virtualDieMapPtr->die[dieNo].currentBlock = currentBlock;
 		}
 	}
 	else if(virtualBlockMapPtr->block[dieNo][currentBlock].currentPage > USER_PAGES_PER_BLOCK)

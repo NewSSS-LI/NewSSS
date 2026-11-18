@@ -25,15 +25,12 @@ typedef struct _DFTL_GTD {
 	DFTL_GTD_ENTRY entry[DFTL_NUM_TRANS_PAGES];
 } DFTL_GTD, *P_DFTL_GTD;
 
-// per-die translation block free list + current block (mirrors
-// VIRTUAL_DIE_MAP's role but tracked separately so translation blocks never
-// mix with GreedyFTL's data-block free list / GC victim list).
+// Per-die translation blocks. They come from the die's normal free block list and
+// go back to it after translation GC; they are never on the data GC victim list.
 typedef struct _DFTL_TRANS_DIE_ENTRY {
 	unsigned int currentBlock;	// page cursor for this block is virtualBlockMapPtr->block[dieNo][currentBlock].currentPage (reused, same as data blocks)
-	unsigned int headFreeBlock;
-	unsigned int tailFreeBlock;
-	unsigned int freeBlockCnt;
-	unsigned int blockList[DFTL_TRANS_BLOCKS_PER_DIE];	// the fixed set of block numbers reserved for translation use on this die
+	unsigned int blockCnt;
+	unsigned int blockList[DFTL_TRANS_MAX_BLOCKS_PER_DIE];	// translation blocks of this die, current one included
 } DFTL_TRANS_DIE_ENTRY, *P_DFTL_TRANS_DIE_ENTRY;
 
 typedef struct _DFTL_TRANS_DIE_MAP {
@@ -61,11 +58,12 @@ unsigned int DftlGtdFetchMappings(unsigned int lpn, unsigned int endLpn, unsigne
 // new physical location of that translation page.
 void DftlGtdWritebackMapping(unsigned int lpn, unsigned int vsa);
 
-// Reclaim translation-block space for dieNo when its free list is empty.
-// Simple full-scan variant (translation blocks are few and turn over far
-// less often than data blocks, per the paper's own findings) rather than
-// GreedyFTL's segregated invalid-count victim list.
+// Translation GC of dieNo: the live translation pages of all its translation
+// blocks move into one new block, the old blocks go back to the free list.
 void DftlGcTranslationBlock(unsigned int dieNo);
+
+// Number of translation blocks dieNo holds (for the GC trigger).
+unsigned int DftlTransBlockCount(unsigned int dieNo);
 
 // GC batch update: new VSAs of uncached moved pages of one translation page.
 void DftlGtdUpdateMappings(unsigned int mvpn, const unsigned int *offset, const unsigned int *vsa, unsigned int count);

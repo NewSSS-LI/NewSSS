@@ -8,7 +8,7 @@ TPFTL(Zhou et al., "An Efficient Page-level FTL to Optimize Address Translation 
 
 ## 구성
 
-`firmware/dftl`(고친 DFTL)을 복사하고 매핑 캐시(CMT)만 TPFTL 방식으로 바꿨다. 할당, GC, 변환 페이지 관리(GTD)는 DFTL과 같다. API 이름도 DFTL 것(`Dftl*`)을 그대로 써서 나머지 코드는 바뀌지 않는다.
+`firmware/dftl`(고친 DFTL)을 복사하고 CMT만 TPFTL 방식으로 바꿨다. 할당, GC, translation page 관리(GTD)는 DFTL과 같다. translation block을 free block list에서 필요할 때 가져오는 방식과 superblock GC(2026-11-17)도 DFTL과 같다. API 이름도 DFTL 것(`Dftl*`)을 그대로 써서 나머지 코드는 바뀌지 않는다.
 
 | TPFTL 기능 | 구현 |
 |---|---|

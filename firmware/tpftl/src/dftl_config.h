@@ -52,17 +52,22 @@
 #define DFTL_NUM_TRANS_PAGES			(((SLICES_PER_SSD) + (DFTL_MAPPINGS_PER_TRANS_PAGE) - 1) / (DFTL_MAPPINGS_PER_TRANS_PAGE))
 
 //------------------------------------------------------------------
-// Translation block pool.
+// Translation blocks.
 //
-// A small, fixed number of blocks per die is reserved exclusively for
-// translation pages (mirrors the paper's "Translation Blocks" vs.
-// "Data Blocks" split, Section 3.1). Reserved at InitAddressMap() time by
-// pulling blocks out of the normal per-die free list before any data is
-// written. Sized with headroom over DFTL_NUM_TRANS_PAGES so translation-block
-// GC has room to operate (out-of-place updates need slack, same as data
-// blocks).
+// The paper keeps translation pages in their own blocks (Section 3.1) but
+// reserves no fixed number of them. Like the LearnedFTL authors' FEMU code
+// (trans_wp taking lines from the common free list), each die's translation
+// current block is taken from the die's normal free block list when needed, and
+// collected translation blocks go back to it. Translation GC moves the live
+// translation pages of all of a die's translation blocks into one new block.
+// It runs when free superblocks run low and the die holds
+// DFTL_TRANS_GC_BLOCK_THRESHOLD translation blocks (LearnedFTL gc_threshold 5),
+// or always when it holds DFTL_TRANS_MAX_BLOCKS_PER_DIE (bookkeeping bound).
 //------------------------------------------------------------------
-#define DFTL_TRANS_BLOCKS_PER_DIE		4
+#ifndef DFTL_TRANS_GC_BLOCK_THRESHOLD
+#define DFTL_TRANS_GC_BLOCK_THRESHOLD	5
+#endif
+#define DFTL_TRANS_MAX_BLOCKS_PER_DIE	32
 
 //------------------------------------------------------------------
 // TPFTL prefetching (request-level and selective): most mappings loaded by one

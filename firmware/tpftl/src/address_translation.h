@@ -66,8 +66,15 @@
 
 #define RESERVED_FREE_BLOCK_COUNT	0x1
 
-// Upper bound on GC runs for one host allocation (see FindFreeVirtualSlice).
-#define GC_MAX_RUNS_PER_ALLOC		(2 * USER_DIES)
+// GC works on superblocks (one block on every die). Free superblocks = the smallest
+// free block count over the dies. GC starts when fewer than 3 are free, the
+// trigger of the LearnedFTL authors' repo (ld-tpftl.c, free_line_threshold = 3).
+#ifndef GC_FREE_SUPERBLOCK_WATERMARK
+#define GC_FREE_SUPERBLOCK_WATERMARK	2
+#endif
+
+// Upper bound on GC rounds for one host allocation (see FindFreeVirtualSlice).
+#define GC_MAX_RUNS_PER_ALLOC		64
 
 #define GET_FREE_BLOCK_NORMAL	0x0
 #define GET_FREE_BLOCK_GC		0x1
@@ -204,6 +211,7 @@ void DftlSetMapping(unsigned int logicalSliceAddr, unsigned int virtualSliceAddr
 
 unsigned int FindFreeVirtualSlice();
 unsigned int FindFreeVirtualSliceForGc(unsigned int srcDieNo, unsigned int victimBlockNo);
+unsigned int FreeSuperblockCount();
 unsigned int FindDieForFreeSliceAllocation();
 
 void InvalidateOldVsa(unsigned int logicalSliceAddr);
