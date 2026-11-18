@@ -69,7 +69,8 @@ void InitGcVictimMap()
 }
 
 
-void GarbageCollection(unsigned int dieNo)
+// Collects one victim of dieNo. Returns 0 when the die has none.
+unsigned int GarbageCollection(unsigned int dieNo)
 {
 	unsigned int victimBlockNo, pageNo, virtualSliceAddr, logicalSliceAddr, reqSlotTag, copyVsa, bufEntry;
 	static unsigned int movedLpn[USER_PAGES_PER_BLOCK], movedVsa[USER_PAGES_PER_BLOCK];
@@ -77,6 +78,8 @@ void GarbageCollection(unsigned int dieNo)
 	unsigned int movedCnt = 0, i;
 
 	victimBlockNo = GetFromGcVictimList(dieNo);
+	if(victimBlockNo == BLOCK_NONE)
+		return 0;
 
 	if(virtualBlockMapPtr->block[dieNo][victimBlockNo].invalidSliceCnt != SLICES_PER_BLOCK)
 	{
@@ -171,6 +174,8 @@ void GarbageCollection(unsigned int dieNo)
 	// block out of the list properly instead of writing into a listed block.
 	if(virtualDieMapPtr->die[dieNo].currentBlock == victimBlockNo)
 		virtualDieMapPtr->die[dieNo].currentBlock = GetFromFbList(dieNo, GET_FREE_BLOCK_GC);
+
+	return 1;
 }
 
 
@@ -219,8 +224,8 @@ unsigned int GetFromGcVictimList(unsigned int dieNo)
 		}
 	}
 
-	assert(!"[WARNING] There are no free blocks. Abort terminate this ssd. [WARNING]");
-	return BLOCK_FAIL;
+	// No block with invalid data on this die: superblock GC skips the die.
+	return BLOCK_NONE;
 }
 
 

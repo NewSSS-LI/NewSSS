@@ -18,20 +18,20 @@ DFTL(Demand-based Flash Translation Layer, Gupta et al. ASPLOS'09) 구현. Greed
 5. `run-dftl` 우클릭 → Run As → Launch on Hardware (GDB)
 
 ## 새로 작성한 파일
-- `src/dftl_config.h` — CMT 용량(`DFTL_CMT_CAPACITY`, 기본 4096), translation page당 매핑 수, GTD 크기, 다이당 translation block 예약 개수 등 설정 상수
+- `src/dftl_config.h` — CMT 용량(`DFTL_CMT_CAPACITY`, 기본 4096), translation page당 매핑 수, GTD 크기, translation GC 기준(`DFTL_TRANS_GC_BLOCK_THRESHOLD`) 등 설정 상수
 - `src/dftl_cmt.h` / `src/dftl_cmt.c` — Segmented LRU 캐시 (probationary + protected segment), 순수 자료구조, NAND I/O 없음
-- `src/dftl_gtd.h` / `src/dftl_gtd.c` — GTD, translation page read/write, translation block 풀 관리, translation block GC
+- `src/dftl_gtd.h` / `src/dftl_gtd.c` — GTD, translation page read/write, translation block 할당(free block list에서), translation GC
 
 ## 수정한 파일 (GreedyFTL 원본 대비)
 - `src/address_translation.c/h` — `AddrTransRead`/`AddrTransWrite`/`InvalidateOldVsa`가 `logicalSliceMapPtr[]` 직접 접근 대신 `DftlGetMapping`/`DftlSetMapping`(CMT+GTD 경유)을 사용하도록 변경. `InitAddressMap()`에서 `DftlCmtInit()`/`DftlGtdInit()` 호출 추가.
-- `src/garbage_collection.c` — valid page는 P2L(물리→논리 표)로 판별한다. 덮어쓸 때 `InvalidateOldVsa`가 옛 위치의 P2L을 지우므로 매핑 조회나 변환 페이지 읽기가 없다. 옮긴 페이지의 매핑은 캐시에 있으면 CMT에서 갱신하고, 없으면 GC 끝에 변환 페이지마다 한 번 읽고 한 번 쓴다(batch update, 논문 3.3절). 복사는 16 die에 돌아가며 병렬로 한다(GreedyFTL 원본은 피해 블록의 die 안에서 한 페이지씩). victim은 die별 greedy로 고른다.
+- `src/garbage_collection.c` — valid page는 P2L(물리→논리 표)로 판별한다. 덮어쓸 때 `InvalidateOldVsa`가 옛 위치의 P2L을 지우므로 매핑 조회나 translation page 읽기가 없다. 옮긴 page의 매핑은 CMT에 있으면 CMT에서 갱신하고, 없으면 GC 끝에 translation page마다 한 번 읽고 한 번 쓴다(batch update, 논문 3.3절). 복사는 16 die에 돌아가며 병렬로 한다(GreedyFTL 원본은 피해 블록의 die 안에서 한 페이지씩). victim은 die별 greedy로 고른다. GC는 superblock 단위로 시작한다: free superblock(die별 free block 수의 최솟값)이 3개 미만이면 translation block이 5개 이상인 die의 translation GC를 먼저 하고, 16 die 모두에서 data victim을 하나씩 정리한다([LearnedFTL 저자 레포](https://github.com/astlxmu/LearnedFTL)와 같은 시작 조건, `firmware/greedyftl` README 참고).
 - `src/memory_map.h` — CMT/GTD/translation block 풀을 위한 DRAM 주소 추가(기존 주소 체계는 건드리지 않고 뒤에 추가), translation page 스테이징 버퍼는 `RESERVED_DATA_BUFFER_BASE_ADDR` 재사용.
 
 나머지 파일(`nvme/`, `request_*.c/h`, `data_buffer.c/h`, `ftl_config.c/h`, `main.c`, `nsc_driver.c/h` 등)은 원본 벤더 포크(`CRZ-Technology/OpenSSD-OpenChannelSSD`)의 `run-gftl3`와 100% 동일, 전혀 수정 안 함.
 
 ## 설계상 단순화 (문서화된 트레이드오프)
 - 이 보드는 DRAM이 1GB라 전체 매핑 테이블(~30MB)이 원래 다 들어가서, DFTL 특유의 "SRAM 부족 해결"이라는 동기는 절실하지 않음 — `DFTL_CMT_CAPACITY`를 의도적으로 작게(기본 4096) 잡아서 demand-paging 효과가 FIO 결과에 나타나도록 함. 논문 Fig.11(SRAM 크기별 성능)처럼 이 값을 바꿔가며 재측정 가능.
-- Translation block은 다이당 고정 개수(`DFTL_TRANS_BLOCKS_PER_DIE`, 기본 4개) 예약. GC는 GreedyFTL의 segregated invalid-count 방식 대신 단순 전체 스캔(해당 다이의 예약 블록 중 invalid 페이지 제일 많은 걸 victim으로) — translation block 개수가 적고 turnover가 드물어서 충분.
+- translation block은 미리 예약하지 않는다(2026-11-17). 논문(3.1~3.3절)은 translation page를 data block과 다른 translation block에 두지만 개수를 정하지 않고, free block pool과 GC 기준이 하나다. 그래서 die마다 translation page용 현재 block을 free block list에서 필요할 때 가져오고, translation GC가 끝난 block은 그 list로 돌려준다([LearnedFTL 저자 레포](https://github.com/astlxmu/LearnedFTL)의 `trans_wp`와 같은 방식). translation GC는 그 die의 모든 translation block에서 live translation page(GTD로 찾음)를 새 block 하나로 옮긴다. free superblock이 적을 때 translation block이 2개 이상이면, 또는 32개(`DFTL_TRANS_MAX_BLOCKS_PER_DIE`, bookkeeping 한도)가 되면 한다.
 - Translation page I/O는 전부 동기(blocking) 처리 — 읽은 버퍼 내용을 바로 검사/수정해야 해서 GreedyFTL GC의 비동기 read+write 패턴과 다름. 정확성 우선, 성능 최적화는 추후 과제.
 
 ## 현재 상태 (2026-09-30/10-01 기준)
