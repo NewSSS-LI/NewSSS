@@ -68,26 +68,43 @@ void InitGcVictimMap()
 }
 
 
-void GarbageCollection(unsigned int dieNo)
+// One superblock GC round: pick the greedy victim (most invalid slices) on every
+// die and collect all of them together. Copies stay on the victim's die and are
+// issued page by page across the dies, so all dies copy in parallel. Returns the
+// number of dies that had a victim (0: nothing left to collect).
+unsigned int GarbageCollection(void)
 {
-	unsigned int victimBlockNo, pageNo, virtualSliceAddr, logicalSliceAddr, reqSlotTag, copyVsa, bufEntry;
+	unsigned int victimBlock[USER_DIES];
+	unsigned int dieNo, victimBlockNo, pageNo, virtualSliceAddr, logicalSliceAddr, reqSlotTag, copyVsa, bufEntry, victims = 0;
 
-	victimBlockNo = GetFromGcVictimList(dieNo);
-
-	if(virtualBlockMapPtr->block[dieNo][victimBlockNo].invalidSliceCnt != SLICES_PER_BLOCK)
+	for(dieNo = 0; dieNo < USER_DIES; dieNo++)
 	{
-		for(pageNo=0 ; pageNo<USER_PAGES_PER_BLOCK ; pageNo++)
+		victimBlock[dieNo] = GetFromGcVictimList(dieNo);
+		if(victimBlock[dieNo] != BLOCK_NONE)
+			victims++;
+	}
+	if(victims == 0)
+		return 0;
+
+	for(pageNo=0 ; pageNo<USER_PAGES_PER_BLOCK ; pageNo++)
+	{
+		for(dieNo = 0; dieNo < USER_DIES; dieNo++)
 		{
+			victimBlockNo = victimBlock[dieNo];
+			if(victimBlockNo == BLOCK_NONE)
+				continue;
+			if(virtualBlockMapPtr->block[dieNo][victimBlockNo].invalidSliceCnt == SLICES_PER_BLOCK)
+				continue;
+
 			virtualSliceAddr = Vorg2VsaTranslation(dieNo, victimBlockNo, pageNo);
 			logicalSliceAddr = virtualSliceMapPtr->virtualSlice[virtualSliceAddr].logicalSliceAddr;
 
 			if(logicalSliceAddr != LSA_NONE)
 				if(logicalSliceMapPtr->logicalSlice[logicalSliceAddr].virtualSliceAddr ==  virtualSliceAddr) //valid data
 				{
-					// Copy target on any die; the buffer of the target die links the
-					// read and the write, so copies to different dies run in parallel.
+					// Copy on the same die; its temporary buffer links the read and the write.
 					copyVsa = FindFreeVirtualSliceForGc(dieNo, victimBlockNo);
-					bufEntry = AllocateTempDataBuf(Vsa2VdieTranslation(copyVsa));
+					bufEntry = AllocateTempDataBuf(dieNo);
 
 					//read
 					reqSlotTag = GetFromFreeReqQ();
@@ -131,13 +148,23 @@ void GarbageCollection(unsigned int dieNo)
 		}
 	}
 
-	EraseBlock(dieNo, victimBlockNo);
+	for(dieNo = 0; dieNo < USER_DIES; dieNo++)
+	{
+		victimBlockNo = victimBlock[dieNo];
+		if(victimBlockNo == BLOCK_NONE)
+			continue;
 
-	// The victim may have been this die's current block (copies then skip this die
-	// when it has no free block). It is in the free list now, so take the current
-	// block out of the list properly instead of writing into a listed block.
-	if(virtualDieMapPtr->die[dieNo].currentBlock == victimBlockNo)
-		virtualDieMapPtr->die[dieNo].currentBlock = GetFromFbList(dieNo, GET_FREE_BLOCK_GC);
+		EraseBlock(dieNo, victimBlockNo);
+
+		// A victim with no valid data may have been this die's current block (no
+		// copy moved the current block away). It is in the free list now, so take
+		// the current block out of the list properly instead of writing into a
+		// listed block.
+		if(virtualDieMapPtr->die[dieNo].currentBlock == victimBlockNo)
+			virtualDieMapPtr->die[dieNo].currentBlock = GetFromFbList(dieNo, GET_FREE_BLOCK_GC);
+	}
+
+	return victims;
 }
 
 
@@ -186,8 +213,8 @@ unsigned int GetFromGcVictimList(unsigned int dieNo)
 		}
 	}
 
-	assert(!"[WARNING] There are no free blocks. Abort terminate this ssd. [WARNING]");
-	return BLOCK_FAIL;
+	// No block with invalid data on this die: superblock GC skips it.
+	return BLOCK_NONE;
 }
 
 

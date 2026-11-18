@@ -66,8 +66,17 @@
 
 #define RESERVED_FREE_BLOCK_COUNT	0x1
 
-// Upper bound on GC runs for one host allocation (see FindFreeVirtualSlice).
-#define GC_MAX_RUNS_PER_ALLOC		(2 * USER_DIES)
+// GC works on a superblock: one block on every die (USER_DIES dies) at once. A
+// free superblock is a free block on every die, so the free superblock count is
+// the smallest free block count over the dies. GC starts when it drops to this
+// value, the trigger of the LearnedFTL authors' repo (ld-tpftl.c: GC when fewer
+// than free_line_threshold = 3 lines are free; a line is one block per die).
+#ifndef GC_FREE_SUPERBLOCK_WATERMARK
+#define GC_FREE_SUPERBLOCK_WATERMARK	2
+#endif
+
+// Upper bound on superblock GC rounds for one host allocation.
+#define GC_MAX_ROUNDS_PER_ALLOC		64
 
 #define GET_FREE_BLOCK_NORMAL	0x0
 #define GET_FREE_BLOCK_GC		0x1
@@ -196,6 +205,7 @@ unsigned int AddrTransRead(unsigned int logicalSliceAddr);
 unsigned int AddrTransWrite(unsigned int logicalSliceAddr);
 unsigned int FindFreeVirtualSlice();
 unsigned int FindFreeVirtualSliceForGc(unsigned int srcDieNo, unsigned int victimBlockNo);
+unsigned int FreeSuperblockCount();
 unsigned int FindDieForFreeSliceAllocation();
 
 void InvalidateOldVsa(unsigned int logicalSliceAddr);
