@@ -3,7 +3,8 @@
 runs into one CSV, so the three boards' results can be put side by side.
 
 Usage: summarize.py <run dir> [<run dir> ...] > results.csv
-A run dir is one folder made by a script (…_fb, …_rdb, …_fio or …_rdbcheck). Output columns:
+A run dir is one folder made by a script (…_fb, …_rdb, …_fio, …_rdbcheck, or
+…_fio_a / …_fio_b of bench/fio-check). Output columns:
   ftl, board_id, run, benchmark, workload, metric, value, unit, run_dir
 Units: MB = 10^6 bytes (as in the LearnedFTL paper). db_bench prints "MB/s" in
 units of 2^20 bytes; the CSV converts it.
@@ -95,11 +96,11 @@ def main(dirs):
     for d in dirs:
         m = meta(d)
         run = m.get('run') or d.rstrip('/').rsplit('_', 1)[-1]
-        rows = {'fio': fio_rows, 'fb': fb_rows, 'rdb': rdb_rows, 'rdbcheck': rdbcheck_rows}.get(run)
+        rows = {'fio': fio_rows, 'fio_a': fio_rows, 'fio_b': fio_rows, 'fb': fb_rows, 'rdb': rdb_rows, 'rdbcheck': rdbcheck_rows}.get(run)
         if rows is None:
             print(f'skipped {d}: unknown run type {run}', file=sys.stderr)
             continue
-        bench = {'fio': 'fio', 'fb': 'filebench', 'rdb': 'rocksdb', 'rdbcheck': 'rocksdb_check'}[run]
+        bench = {'fio': 'fio', 'fio_a': 'fio', 'fio_b': 'fio', 'fb': 'filebench', 'rdb': 'rocksdb', 'rdbcheck': 'rocksdb_check'}[run]
         for workload, metric, value, unit in rows(d):
             w.writerow([m.get('ftl', ''), m.get('board_id', ''), run, bench, workload, metric,
                         f'{value:.4g}' if isinstance(value, float) else value, unit, os.path.basename(d.rstrip('/'))])

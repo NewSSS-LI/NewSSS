@@ -4,7 +4,8 @@
 
 | 폴더 | 실험 | 상태 |
 |---|---|---|
-| [`learnedftl-paper/`](learnedftl-paper/README.md) | LearnedFTL 논문(HPCA'24) 실험 재현: FIO, Filebench, RocksDB. 보드 3개에서 FTL만 바꿔 같은 조건으로 측정 | 사용 중 |
+| [`fio-check/`](fio-check/README.md) | FTL 구현 확인: GC 없는 작은 FIO(순차 쓰기·읽기, 랜덤 읽기·쓰기). 공식 Cosmos+ 튜토리얼 성능과 비교 | 사용 중 |
+| [`learnedftl-paper/`](learnedftl-paper/README.md) | LearnedFTL 논문(HPCA'24) 실험 재현: FIO, Filebench, RocksDB. 보드 3개에서 FTL만 바꿔 같은 조건으로 측정 | 멈춤(2026-11-16, FTL 구현을 먼저 바로잡기로). `fio-check`가 이 폴더의 `host/`(config.sh, common.sh 등)를 같이 쓴다 |
 
 ## 새 실험을 추가할 때
 
