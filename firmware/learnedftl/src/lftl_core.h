@@ -72,7 +72,8 @@ typedef struct _LFTL_META {
 	LFTL_LINE line[LFTL_NUM_LINES];
 	unsigned int gtd[LFTL_MAX_GROUPS];
 	unsigned int gcMap[LFTL_SLICES_PER_GROUP];
-	unsigned int tpLine[LFTL_TP_LINES];
+	unsigned int tpLine[LFTL_TP_MAX_LINES];	// lines holding translation pages, current one included
+	unsigned int tpLineCnt;
 	unsigned int tpCurLine;
 	unsigned int freeHead;
 	unsigned int freeTail;

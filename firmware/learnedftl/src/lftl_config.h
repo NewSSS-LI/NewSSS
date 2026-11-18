@@ -64,9 +64,15 @@
 #define LFTL_GROUP_SPAN					3776
 #endif
 
-// When free lines drop to this count, collect the group with the most
-// reclaimable pages. Must stay >= 1: GC itself consumes one free line.
-#define LFTL_GC_FREE_LINE_WATERMARK		4
+// GC trigger of the authors' repo (astlxmu/LearnedFTL, hw/femu/bbssd/ld-tpftl.c,
+// free_line_threshold = 3, gc_threshold = 5): a writer that needs a new line takes
+// it from the free list while at least this many lines are free. Below that, GC
+// runs first: the writer's own group if it holds LFTL_GC_LINE_THRESHOLD lines, else
+// the translation lines if they hold that many, else the group with the most
+// reclaimable pages. A group may hold any number of lines while lines are free.
+#ifndef LFTL_GC_FREE_LINE_THRESHOLD
+#define LFTL_GC_FREE_LINE_THRESHOLD		3
+#endif
 
 // 1: keep the full mapping table as a shadow (LOGICAL_SLICE_MAP on the board,
 // which is already allocated) and check every translation against it. A
@@ -97,9 +103,11 @@ typedef char lftlCheckLineFitsGroup[(LFTL_SLICES_PER_LINE == LFTL_SLICES_PER_GRO
 typedef char lftlCheckGroupSpan[(LFTL_GROUP_SPAN <= LFTL_SLICES_PER_GROUP) ? 1 : -1];
 typedef char lftlCheckCmtPowerOfTwo[((LFTL_CMT_CAPACITY & (LFTL_CMT_CAPACITY - 1)) == 0) ? 1 : -1];
 
-// Lines reserved for translation pages. 1843 live TPs fit in half a line, so
-// three lines (12288 slots) leave plenty of room for out-of-place updates.
-#define LFTL_TP_LINES					3
+// Translation pages are not given reserved lines. As in the authors' repo (its
+// trans_wp), they have their own current line taken from the common free list
+// when needed, and their lines go back to it after GC. This bounds the bookkeeping
+// array only; GC keeps the count near LFTL_GC_LINE_THRESHOLD.
+#define LFTL_TP_MAX_LINES				32
 
 // A model piece covers 64 LPNs and a group has 64 pieces, the same 64 LPNs per
 // piece as the paper's 8 pieces per 512-entry translation page.

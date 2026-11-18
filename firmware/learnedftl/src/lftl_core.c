@@ -121,15 +121,18 @@ static void ReclaimIfEmpty(unsigned int g, unsigned int line)
 // Translation pages
 //------------------------------------------------------------------
 
-static unsigned int TpFreeLine(void)
+// A free line becomes the current translation line.
+static void TpOpenLine(void)
 {
-	unsigned int i;
+	unsigned int line;
 
-	for(i = 0; i < LFTL_TP_LINES; i++)
-		if((m->tpLine[i] != m->tpCurLine) && (m->line[m->tpLine[i]].wp == 0))
-			return m->tpLine[i];
+	if(m->tpLineCnt == LFTL_TP_MAX_LINES)
+		LftlPortFatal("too many translation lines", m->tpLineCnt);
 
-	return LFTL_LINE_NONE;
+	line = FreeListPop();
+	m->line[line].owner = LFTL_OWNER_TP;
+	m->tpLine[m->tpLineCnt++] = line;
+	m->tpCurLine = line;
 }
 
 static unsigned int TpTakeSlice(void)
@@ -142,49 +145,64 @@ static unsigned int TpTakeSlice(void)
 	return vsa;
 }
 
-// Keep one translation line empty: compact the emptiest one into the current line.
+// Translation GC (the repo's batch_gtd_do_gc): the live translation pages of all
+// translation lines move into one new line, and the old lines go back to the free
+// list. The live pages (one per group) fit in a single line.
 static void TpCollect(void)
 {
-	unsigned int i, off, victim = LFTL_LINE_NONE;
+	unsigned int oldLine[LFTL_TP_MAX_LINES];
+	unsigned int i, off, oldCnt = m->tpLineCnt;
 
-	for(i = 0; i < LFTL_TP_LINES; i++)
-		if((m->tpLine[i] != m->tpCurLine) && ((victim == LFTL_LINE_NONE) || (m->line[m->tpLine[i]].valid < m->line[victim].valid)))
-			victim = m->tpLine[i];
+	for(i = 0; i < oldCnt; i++)
+		oldLine[i] = m->tpLine[i];
+	m->tpLineCnt = 0;
+	TpOpenLine();
 
-	for(off = 0; off < m->line[victim].wp; off++)
+	for(i = 0; i < oldCnt; i++)
 	{
-		unsigned int oldVsa = VsaOf(victim, off);
-		unsigned int p2l = LftlPortP2lGet(oldVsa);
+		unsigned int victim = oldLine[i];
 
-		if((p2l != LSA_NONE) && (m->gtd[p2l & ~LFTL_P2L_TP_FLAG] == oldVsa))
+		for(off = 0; off < m->line[victim].wp; off++)
 		{
-			unsigned int newVsa = TpTakeSlice();
+			unsigned int oldVsa = VsaOf(victim, off);
+			unsigned int p2l = LftlPortP2lGet(oldVsa);
 
-			LftlPortReadPageSync(oldVsa);
-			LftlPortWritePageSync(newVsa);
-			m->gtd[p2l & ~LFTL_P2L_TP_FLAG] = newVsa;
-			LftlPortP2lSet(newVsa, p2l);
-			m->stats.tpReads++;
-			m->stats.tpWrites++;
-			m->stats.tpGcCopiedPages++;
+			if((p2l != LSA_NONE) && (m->gtd[p2l & ~LFTL_P2L_TP_FLAG] == oldVsa))
+			{
+				unsigned int newVsa = TpTakeSlice();
+
+				LftlPortReadPageSync(oldVsa);
+				LftlPortWritePageSync(newVsa);
+				m->gtd[p2l & ~LFTL_P2L_TP_FLAG] = newVsa;
+				LftlPortP2lSet(newVsa, p2l);
+				m->stats.tpReads++;
+				m->stats.tpWrites++;
+				m->stats.tpGcCopiedPages++;
+			}
 		}
+
+		EraseLine(victim);
+		FreeListPush(victim);
 	}
 
-	EraseLine(victim);
 	m->stats.tpGcCount++;
 }
 
-// May overwrite the staging buffer, so call it before filling the buffer.
+// May overwrite the staging buffer, so call it before filling the buffer. Runs
+// translation GC only (never group GC): it is also called from inside GcGroup.
+// Below the free line threshold the translation lines are collected when there
+// are at least two of them (one GC frees all but one, so free lines grow);
+// otherwise a line is taken anyway, which happens at most once per 4096
+// translation-page writes. With many free lines the translation lines are also
+// collected when they reach LFTL_TP_MAX_LINES (the repo has no such bound).
 static unsigned int TpAllocSlice(void)
 {
 	if(m->line[m->tpCurLine].wp == LFTL_SLICES_PER_LINE)
 	{
-		m->tpCurLine = TpFreeLine();
-		if(m->tpCurLine == LFTL_LINE_NONE)
-			LftlPortFatal("no free translation line", 0);
-
-		if(TpFreeLine() == LFTL_LINE_NONE)
+		if(((m->freeLineCnt < LFTL_GC_FREE_LINE_THRESHOLD) && (m->tpLineCnt >= 2)) || (m->tpLineCnt == LFTL_TP_MAX_LINES))
 			TpCollect();
+		if(m->line[m->tpCurLine].wp == LFTL_SLICES_PER_LINE)
+			TpOpenLine();
 	}
 
 	return TpTakeSlice();
@@ -490,11 +508,17 @@ static unsigned int AllocSlice(unsigned int g)
 			ReclaimIfEmpty(g, closed);
 		}
 
-		// GC can leave this group with a usable line, so re-evaluate after it.
-		if(group->lineCnt >= LFTL_GC_LINE_THRESHOLD)
-			GcGroup(g);
-		else if(m->freeLineCnt <= LFTL_GC_FREE_LINE_WATERMARK)
-			GcGroup(SelectVictimGroup(g));
+		// The repo's trigger (should_do_gc_v3). GC can leave this group with a
+		// usable line, so re-evaluate after it.
+		if(m->freeLineCnt < LFTL_GC_FREE_LINE_THRESHOLD)
+		{
+			if(group->lineCnt >= LFTL_GC_LINE_THRESHOLD)
+				GcGroup(g);
+			else if(m->tpLineCnt >= LFTL_GC_LINE_THRESHOLD)
+				TpCollect();
+			else
+				GcGroup(SelectVictimGroup(g));
+		}
 		else
 		{
 			line = FreeListPop();
@@ -516,7 +540,7 @@ static unsigned int AllocSlice(unsigned int g)
 
 void LftlInit(P_LFTL_META meta, unsigned int numGroups, unsigned int numLines)
 {
-	unsigned int i, line, usable = 0, tpFound = 0;
+	unsigned int i, line, usable = 0;
 
 	m = meta;
 	m->numGroups = numGroups;
@@ -563,21 +587,18 @@ void LftlInit(P_LFTL_META meta, unsigned int numGroups, unsigned int numLines)
 		}
 
 		usable++;
-		if(tpFound < LFTL_TP_LINES)
-		{
-			m->line[line].owner = LFTL_OWNER_TP;
-			m->tpLine[tpFound++] = line;
-		}
-		else
-			FreeListPush(line);
+		FreeListPush(line);
 	}
 
-	// Each group may hold a line and GC needs the watermark. One more guarantees a
-	// group with two lines exists whenever free lines run low.
-	if(usable < numGroups + LFTL_TP_LINES + LFTL_GC_FREE_LINE_WATERMARK + 1)
+	// Each group may hold a line, translation pages need one, and GC needs the
+	// threshold. One more guarantees a group with two lines exists whenever free
+	// lines run low.
+	if(usable < numGroups + 1 + LFTL_GC_FREE_LINE_THRESHOLD + 1)
 		LftlPortFatal("too few good lines, usable", usable);
 
-	m->tpCurLine = m->tpLine[0];
+	m->tpLineCnt = 0;
+	TpOpenLine();
+	m->stats.linesAllocated = 0;
 }
 
 unsigned int LftlRead(unsigned int lsa)
